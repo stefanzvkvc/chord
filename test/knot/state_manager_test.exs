@@ -49,8 +49,8 @@ defmodule Knot.StateManagerTest do
     {:delta, delta, ^new_version} = handle_reconnect(context_id, old_version)
 
     assert delta == %{
-             "status" => %{action: :modified, old_value: "online", value: "offline"},
-             "location" => %{action: :added, value: "Earth"}
+             status: %{action: :modified, old_value: "online", value: "offline"},
+             location: %{action: :added, value: "Earth"}
            }
   end
 

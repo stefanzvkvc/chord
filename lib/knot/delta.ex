@@ -6,8 +6,8 @@ defmodule Knot.Delta do
   @spec calculate_delta(current_state :: map(), new_state :: map()) :: map()
   def calculate_delta(current_state, new_state) do
     # Convert all keys to strings for uniformity
-    current_state = Map.new(current_state, fn {k, v} -> {to_string(k), v} end)
-    new_state = Map.new(new_state, fn {k, v} -> {to_string(k), v} end)
+    current_state = Map.new(current_state, fn {k, v} -> {k, v} end)
+    new_state = Map.new(new_state, fn {k, v} -> {k, v} end)
 
     # Detect added and modified keys
     added_or_modified =
