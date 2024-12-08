@@ -43,14 +43,14 @@ defmodule Knot.Backend.ETS do
     |> Enum.map(fn {_, _, state} -> state end)
   end
 
-    # Ensure the ETS table exists
-    defp ensure_table_exists do
-      unless :ets.info(@state_table) do
-        :ets.new(@state_table, [:named_table, :set, :public])
-      end
-
-      unless :ets.info(@history_table) do
-        :ets.new(@history_table, [:named_table, :bag, :public])
-      end
+  # Ensure the ETS table exists
+  defp ensure_table_exists do
+    unless :ets.info(@state_table) do
+      :ets.new(@state_table, [:named_table, :set, :public])
     end
+
+    unless :ets.info(@history_table) do
+      :ets.new(@history_table, [:named_table, :bag, :public])
+    end
+  end
 end
