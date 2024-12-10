@@ -2,5 +2,9 @@ import Config
 
 config :knot,
   backend: Knot.Backend.ETS,
-  # Default to 10 if not explicitly configured
-  delta_threshold: 10
+  # Time-based state cleanup
+  state_ttl: :timer.hours(6),
+  # Time-based state cleanup
+  delta_ttl: :timer.hours(2),
+  # Number of versions to retain
+  delta_threshold: 100

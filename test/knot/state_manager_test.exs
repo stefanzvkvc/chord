@@ -1,90 +1,123 @@
 defmodule Knot.StateManagerTest do
-  use ExUnit.Case
-  import Knot.StateManager
+  use ExUnit.Case, async: true
+  import Mox
+  alias Knot.StateManager
+  alias Knot.Backend.Mock
+  alias Knot.Delta
+
+  setup :verify_on_exit!
 
   setup do
-    # Reset the backend (e.g., clear ETS tables) before each test
-    :ets.new(:knot_state_table, [:named_table, :set, :public])
-    :ets.new(:knot_state_history_table, [:named_table, :bag, :public])
-    :ok
-  end
+    Application.put_env(:knot, :backend, Knot.Backend.Mock)
+    Application.put_env(:knot, :delta_threshold, 100)
 
-  test "fetches initial state for a given context" do
     context_id = "group:1"
-    state = %{}
-
-    assert fetch_state(context_id) == {state, 0}
-  end
-
-  test "syncs new state and calculates delta" do
-    context_id = "group:1"
+    device_id = "device:1"
     old_state = %{name: "Alice", status: "online"}
     new_state = %{name: "Alice", status: "offline", location: "Earth"}
+    client_version = 1
 
-    {:ok, old_version} = sync_state(context_id, old_state)
-    {:ok, new_version} = sync_state(context_id, new_state)
-
-    assert new_version > old_version
-    assert fetch_state(context_id) == {new_state, new_version}
+    {:ok,
+     context_id: context_id,
+     device_id: device_id,
+     old_state: old_state,
+     new_state: new_state,
+     client_version: client_version}
   end
 
-  test "delivers full state on reconnect when no version is provided" do
-    context_id = "group:1"
-    state = %{name: "Alice", status: "online"}
+  test "get_state fetches the current state", %{context_id: context_id, old_state: old_state} do
+    Mock
+    |> expect(:get_state, fn ^context_id -> {old_state, 1} end)
 
-    {:ok, new_version} = sync_state(context_id, state)
-    {:full_state, full_state, ^new_version} = handle_reconnect(context_id, nil)
-
-    assert full_state == state
+    assert StateManager.get_state(context_id) == {old_state, 1}
   end
 
-  test "delivers delta on reconnect when client version matches history" do
-    context_id = "group:1"
-    old_state = %{name: "Alice", status: "online"}
-    new_state = %{name: "Alice", status: "offline", location: "Earth"}
+  test "set_state calculates delta and updates state", %{
+    context_id: context_id,
+    device_id: device_id,
+    old_state: old_state,
+    new_state: new_state
+  } do
+    delta = Delta.calculate_delta(old_state, new_state)
 
-    {:ok, old_version} = sync_state(context_id, old_state)
-    {:ok, new_version} = sync_state(context_id, new_state)
+    Mock
+    |> expect(:get_state, fn ^context_id -> {old_state, 1} end)
+    |> expect(:set_state, fn ^context_id, ^new_state, 2 -> :ok end)
+    |> expect(:set_delta, fn ^context_id, ^device_id, ^delta, 2 -> :ok end)
 
-    {:delta, delta, ^new_version} = handle_reconnect(context_id, old_version)
-
-    assert delta == %{
-             status: %{action: :modified, old_value: "online", value: "offline"},
-             location: %{action: :added, value: "Earth"}
-           }
+    assert StateManager.set_state(context_id, device_id, new_state) == {:ok, 2, new_state, delta}
   end
 
-  test "delivers full state on reconnect when client's version is too old" do
-    # Set the delta threshold to a smaller value for this test
-    Application.put_env(:knot, :delta_threshold, 2)
-    context_id = "group:1"
-    state_v1 = %{name: "Alice", status: "online"}
-    state_v2 = %{name: "Alice", status: "offline"}
-    state_v3 = %{name: "Alice", status: "offline", location: "Earth"}
+  test "sync_state returns full state if client version is nil", %{
+    context_id: context_id,
+    device_id: device_id,
+    old_state: old_state
+  } do
+    Mock
+    |> expect(:get_state, fn ^context_id -> {old_state, 1} end)
+    |> expect(:delete_deltas_by_version, fn ^context_id, ^device_id, -99 -> :ok end)
 
-    {:ok, _} = sync_state(context_id, state_v1)
-    {:ok, _} = sync_state(context_id, state_v2)
-    {:ok, new_version} = sync_state(context_id, state_v3)
-
-    # Simulate client reconnecting with an outdated version
-    {:full_state, full_state, ^new_version} = handle_reconnect(context_id, 0)
-
-    assert full_state == state_v3
+    assert StateManager.sync_state(context_id, device_id, nil) ==
+             {:full_state, old_state, 1}
   end
 
-  test "delivers full state on reconnect when no history matches client version" do
-    context_id = "group:1"
-    state_v1 = %{name: "Alice", status: "online"}
-    state_v2 = %{name: "Alice", status: "offline"}
+  test "sync_state returns no_change if client version matches", %{
+    context_id: context_id,
+    device_id: device_id,
+    old_state: old_state
+  } do
+    Mock
+    |> expect(:get_state, fn ^context_id -> {old_state, 1} end)
 
-    {:ok, _} = sync_state(context_id, state_v1)
-    {:ok, new_version} = sync_state(context_id, state_v2)
+    assert StateManager.sync_state(context_id, device_id, 1) == {:no_change, 1}
+  end
 
-    # Simulate clearing history
-    :ets.delete_all_objects(:knot_state_history_table)
+  test "sync_state returns delta for valid client version", %{
+    context_id: context_id,
+    device_id: device_id,
+    old_state: old_state,
+    new_state: new_state,
+    client_version: client_version
+  } do
+    delta = Delta.calculate_delta(old_state, new_state)
 
-    {:full_state, full_state, ^new_version} = handle_reconnect(context_id, 1)
+    Mock
+    |> expect(:get_state, fn ^context_id -> {new_state, 2} end)
+    |> expect(:get_delta, fn ^context_id, ^device_id, ^client_version -> [delta] end)
+    |> expect(:delete_deltas_by_version, fn ^context_id, ^device_id, ^client_version -> :ok end)
 
-    assert full_state == state_v2
+    assert StateManager.sync_state(context_id, device_id, client_version) ==
+             {:delta, delta, 2}
+  end
+
+  test "sync_state returns full state if no deltas exist", %{
+    context_id: context_id,
+    device_id: device_id,
+    old_state: old_state
+  } do
+    Mock
+    |> expect(:get_state, fn ^context_id -> {old_state, 1} end)
+    |> expect(:get_delta, fn ^context_id, ^device_id, 0 -> [] end)
+
+    assert StateManager.sync_state(context_id, device_id, 0) == {:full_state, old_state, 1}
+  end
+
+  test "deletes state for a given context_id" do
+    context_id = "game:1"
+
+    Mock
+    |> expect(:delete_state, fn ^context_id -> :ok end)
+
+    assert StateManager.delete_state(context_id) == :ok
+  end
+
+  test "deletes deltas for a specific device" do
+    context_id = "game:1"
+    device_id = "deviceA"
+
+    Mock
+    |> expect(:delete_deltas_by_device, fn ^context_id, ^device_id -> :ok end)
+
+    assert StateManager.delete_deltas_by_device(context_id, device_id) == :ok
   end
 end

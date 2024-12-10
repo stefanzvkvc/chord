@@ -1,67 +1,82 @@
 defmodule Knot.StateManager do
   @moduledoc """
-  Orchestrates state synchronization, delta calculation, and hybrid sync for contexts.
+  Orchestrates state synchronization, delta calculation.
   """
+  alias Knot.{Delta, Cleanup}
+  @default_backend Knot.Backend.ETS
+  @default_delta_threshold 100
 
-  # Fetch the current state for a given context ID
-  @spec fetch_state(context_id :: any()) :: {map(), integer()}
-  def fetch_state(context_id) do
+  @spec get_state(context_id :: any()) :: {map(), integer()}
+  def get_state(context_id) do
     backend().get_state(context_id)
   end
 
-  # Sync state for a given context ID
-  @spec sync_state(context_id :: any(), new_state :: map()) :: {:ok, integer()}
-  def sync_state(context_id, new_state) do
-    {current_state, current_version} = fetch_state(context_id)
+  @spec set_state(context_id :: any(), device_id :: any(), new_state :: map()) ::
+          {:ok, integer(), map(), map()}
+  def set_state(context_id, device_id, new_state) do
+    {old_state, old_version} = get_state(context_id)
+    new_version = old_version + 1
+    delta = Delta.calculate_delta(old_state, new_state)
 
-    # Increment version
-    new_version = current_version + 1
-
-    # Calculate delta
-    delta = Knot.Delta.calculate_delta(current_state, new_state)
-
-    # Save the new state and delta in the backend
     backend().set_state(context_id, new_state, new_version)
-    backend().set_delta(context_id, delta, new_version)
-    {:ok, new_version}
+    backend().set_delta(context_id, device_id, delta, new_version)
+    {:ok, new_version, new_state, delta}
   end
 
-  # Handle client reconnect
-  @spec handle_reconnect(context_id :: any(), client_version :: integer() | nil) ::
+  @spec sync_state(context_id :: any(), device_id :: any(), client_version :: integer() | nil) ::
           {:full_state, map(), integer()} | {:delta, map(), integer()} | {:no_change, integer()}
-  def handle_reconnect(context_id, client_version) do
-    # Fetch the current state and version
-    {current_state, current_version} = fetch_state(context_id)
+  def sync_state(context_id, device_id, client_version) do
+    {current_state, current_version} = get_state(context_id)
 
-    cond do
-      client_version == nil or client_version < current_version - delta_threshold() ->
-        # Deliver full state if the client is too outdated
+    case determine_sync_action(client_version, current_version) do
+      :full_state ->
+        Cleanup.cleanup_data(context_id, device_id, current_version - delta_threshold())
         {:full_state, current_state, current_version}
 
-      client_version >= current_version ->
-        # No changes if versions match or the client's version is ahead
+      :no_change ->
         {:no_change, current_version}
 
-      true ->
-        # Fetch and deliver deltas for reconnect
-        delta_history = backend().get_state_history(context_id, client_version)
+      :deltas ->
+        delta_history = backend().get_delta(context_id, device_id, client_version)
 
         if delta_history == [] do
-          # If no history exists for the client version, deliver full state
           {:full_state, current_state, current_version}
         else
-          # Otherwise, merge and return the delta
-          delta = Knot.Delta.merge_deltas(delta_history)
+          delta = Delta.merge_deltas(delta_history)
+          Cleanup.cleanup_data(context_id, device_id, client_version)
           {:delta, delta, current_version}
         end
     end
   end
 
+  @spec delete_state(context_id :: any()) :: :ok | {:error, term()}
+  def delete_state(context_id) do
+    backend().delete_state(context_id)
+  end
+
+  @spec delete_deltas_by_device(context_id :: any(), device_id :: any()) :: :ok | {:error, term()}
+  def delete_deltas_by_device(context_id, device_id) do
+    backend().delete_deltas_by_device(context_id, device_id)
+  end
+
+  defp determine_sync_action(client_version, current_version) do
+    cond do
+      client_version == nil or client_version < current_version - delta_threshold() ->
+        :full_state
+
+      client_version >= current_version ->
+        :no_change
+
+      true ->
+        :deltas
+    end
+  end
+
   defp backend() do
-    Application.get_env(:knot, :backend, Knot.Backend.ETS)
+    Application.get_env(:knot, :backend, @default_backend)
   end
 
   defp delta_threshold() do
-    Application.get_env(:knot, :delta_threshold, 100)
+    Application.get_env(:knot, :delta_threshold, @default_delta_threshold)
   end
 end
