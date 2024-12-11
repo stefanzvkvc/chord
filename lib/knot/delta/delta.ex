@@ -3,6 +3,8 @@ defmodule Knot.Delta do
   Provides utilities for calculating and formatting state deltas.
   """
 
+  @default_formatter Knot.Delta.Formatter.Default
+
   @spec calculate_delta(current_state :: map(), new_state :: map()) :: map()
   def calculate_delta(current_state, new_state) do
     current_state = Map.new(current_state, fn {k, v} -> {k, v} end)
@@ -58,11 +60,9 @@ defmodule Knot.Delta do
     end)
   end
 
-  @spec format_delta_for_broadcast(delta :: map(), context_id :: any()) :: list()
-  def format_delta_for_broadcast(delta, context_id) do
-    Enum.map(delta, fn {key, change} ->
-      Map.put(change, :context, context_id)
-      |> Map.put(:key, key)
-    end)
+  @spec format_delta(delta :: map(), context_id :: any()) :: list()
+  def format_delta(delta, context_id) do
+    formatter = Application.get_env(:knot, :delta_formatter, @default_formatter)
+    formatter.format(delta, context_id)
   end
 end

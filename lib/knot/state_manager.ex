@@ -49,12 +49,12 @@ defmodule Knot.StateManager do
     end
   end
 
-  @spec delete_state(context_id :: any()) :: :ok | {:error, term()}
+  @spec delete_state(context_id :: any()) :: :ok
   def delete_state(context_id) do
     backend().delete_state(context_id)
   end
 
-  @spec delete_deltas_by_device(context_id :: any(), device_id :: any()) :: :ok | {:error, term()}
+  @spec delete_deltas_by_device(context_id :: any(), device_id :: any()) :: :ok
   def delete_deltas_by_device(context_id, device_id) do
     backend().delete_deltas_by_device(context_id, device_id)
   end

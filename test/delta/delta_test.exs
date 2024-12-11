@@ -51,10 +51,10 @@ defmodule Knot.DeltaTest do
     end
   end
 
-  describe "format_delta_for_broadcast/2" do
-    test "formats delta for broadcasting" do
+  describe "format_delta/2" do
+    test "formats delta" do
       delta = %{name: %{action: :modified, old_value: "Alice", value: "Bob"}}
-      formatted = Delta.format_delta_for_broadcast(delta, "group:1")
+      formatted = Delta.format_delta(delta, "group:1")
 
       assert formatted == [
                %{

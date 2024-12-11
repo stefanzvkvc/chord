@@ -4,13 +4,22 @@ defmodule Knot.Cleanup do
   and time-based cleanup for contexts and devices.
   """
 
-  # Public API for cleaning up stale deltas during sync
+  @default_backend Knot.Backend.ETS
+  @default_state_ttl :timer.hours(6)
+  @default_delta_ttl :timer.hours(3)
+
+  @doc """
+  Public API for cleaning up stale deltas during sync.
+  """
+  @spec cleanup_data(any(), any(), integer()) :: :ok
   def cleanup_data(context_id, device_id, version_threshold) do
-    # Perform version-based cleanup during sync older than a specific version threshold
     backend().delete_deltas_by_version(context_id, device_id, version_threshold)
   end
 
-  # Public API for periodic cleanup
+  @doc """
+  Public API for periodic cleanup.
+  """
+  @spec periodic_cleanup(keyword()) :: :ok
   def periodic_cleanup(opts \\ []) do
     states = backend().list_states(opts)
     devices = backend().list_devices(opts)
@@ -29,7 +38,7 @@ defmodule Knot.Cleanup do
   end
 
   defp cleanup_time_based(context_id, state_timestamp) do
-    state_ttl = Application.get_env(:knot, :state_ttl, :timer.hours(6))
+    state_ttl = Application.get_env(:knot, :state_ttl, @default_state_ttl)
     current_time = System.system_time(:second)
 
     if current_time - state_timestamp > state_ttl do
@@ -38,7 +47,7 @@ defmodule Knot.Cleanup do
   end
 
   defp cleanup_device_deltas(context_id, device_id, delta_timestamp) do
-    delta_ttl = Application.get_env(:knot, :delta_ttl, :timer.hours(3))
+    delta_ttl = Application.get_env(:knot, :delta_ttl, @default_delta_ttl)
     current_time = System.system_time(:second)
 
     if current_time - delta_timestamp > delta_ttl do
@@ -47,6 +56,6 @@ defmodule Knot.Cleanup do
   end
 
   defp backend() do
-    Application.get_env(:knot, :backend, Knot.Backend.ETS)
+    Application.get_env(:knot, :backend, @default_backend)
   end
 end
