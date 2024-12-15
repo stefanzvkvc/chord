@@ -1,145 +1,166 @@
 defmodule Knot.CleanupTest do
   use ExUnit.Case, async: true
-  import Mox
-  alias Knot.Backend.Mock
+  import TestHelpers
   alias Knot.Cleanup
 
-  setup :verify_on_exit!
-
   setup do
-    Application.put_env(:knot, :backend, Mock)
-    Application.put_env(:knot, :state_ttl, :timer.hours(6))
+    Application.put_env(:knot, :backend, Knot.Backend.Mock)
+    Application.put_env(:knot, :time, Knot.Utils.Time.Mock)
+    Application.put_env(:knot, :context_ttl, :timer.hours(6))
+    Application.put_env(:knot, :context_auto_delete, false)
     Application.put_env(:knot, :delta_ttl, :timer.hours(3))
-    :ok
+
+    {:ok, current_time: 1_673_253_120}
   end
 
-  test "cleanup_data/3 cleans up deltas below the version threshold" do
+  describe "Context cleanup" do
+    test "does nothing when auto deletion is off and no deltas available", %{
+      current_time: current_time
+    } do
+      Application.put_env(:knot, :context_auto_delete, false)
+
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_deltas_expectation([])
+      mock_list_contexts_with_delta_counts_expectation([])
+
+      Cleanup.periodic_cleanup()
+    end
+
+    test "cleans up inactive contexts based on TTL", %{
+      current_time: current_time
+    } do
+      Application.put_env(:knot, :context_auto_delete, true)
+      context_id = "game:1"
+      context_ttl = Application.get_env(:knot, :context_ttl)
+      context_time = current_time - context_ttl - 1
+
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_contexts_expectation(context_id: context_id, inserted_at: context_time)
+      mock_delete_context_expectation(context_id: context_id)
+      mock_delete_deltas_for_context_expectation(context_id: context_id)
+      mock_list_deltas_expectation([])
+      mock_list_contexts_with_delta_counts_expectation([])
+
+      Cleanup.periodic_cleanup()
+    end
+
+    test "does not delete active contexts", %{
+      current_time: current_time
+    } do
+      Application.put_env(:knot, :context_auto_delete, true)
+      context_id = "game:1"
+      context_ttl = Application.get_env(:knot, :context_ttl)
+      delta_ttl = Application.get_env(:knot, :delta_ttl)
+      active_context_time = current_time - context_ttl + 100
+      active_delta_time = current_time - delta_ttl + 100
+
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_contexts_expectation(context_id: context_id, inserted_at: active_context_time)
+      mock_list_deltas_expectation(context_id: context_id, inserted_at: active_delta_time)
+      mock_list_contexts_with_delta_counts_expectation([])
+    end
+
+    test "handles empty contexts gracefully", %{
+      current_time: current_time
+    } do
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_contexts_expectation([])
+      mock_list_deltas_expectation([])
+      mock_list_contexts_with_delta_counts_expectation([])
+
+      Cleanup.periodic_cleanup()
+    end
+  end
+
+  describe "Delta cleanup" do
+    test "cleans up deltas based on TTL", %{current_time: current_time} do
+      context_id = "game:1"
+      delta_ttl = Application.get_env(:knot, :delta_ttl)
+      delta_time = current_time - delta_ttl - 1
+      older_than_time = current_time - delta_ttl
+
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_deltas_expectation(context_id: context_id, inserted_at: delta_time)
+      mock_delete_deltas_by_time(context_id: context_id, older_than_time: older_than_time)
+      mock_list_contexts_with_delta_counts_expectation([])
+
+      Cleanup.periodic_cleanup()
+    end
+
+    test "removes deltas exceeding the threshold", %{
+      current_time: current_time
+    } do
+      context_id = "game:1"
+      delta_threshold = Application.get_env(:knot, :delta_threshold)
+
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_deltas_expectation([])
+      mock_list_contexts_with_delta_counts_expectation([%{context_id: context_id, count: delta_threshold + 10}])
+      mock_delete_deltas_exceeding_threshold(context_id: context_id, threshold: delta_threshold)
+
+      Cleanup.periodic_cleanup()
+    end
+
+    test "does not delete active deltas", %{
+      current_time: current_time
+    } do
+      context_id = "game:1"
+      delta_ttl = Application.get_env(:knot, :delta_ttl)
+      active_delta_time = current_time - delta_ttl + 100
+
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_deltas_expectation(context_id: context_id, inserted_at: active_delta_time)
+      mock_list_contexts_with_delta_counts_expectation([])
+
+      Cleanup.periodic_cleanup()
+    end
+
+    test "handles empty deltas gracefully", %{
+      current_time: current_time
+    } do
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_deltas_expectation([])
+      mock_list_contexts_with_delta_counts_expectation([])
+
+      Cleanup.periodic_cleanup()
+    end
+  end
+
+  describe "Boundary and concurrency handling" do
+    test "handles boundary TTL values correctly", %{current_time: current_time} do
+      context_id = "game:1"
+      context_ttl = Application.get_env(:knot, :context_ttl)
+      delta_ttl = Application.get_env(:knot, :delta_ttl)
+
+      # Times set just outside the TTL boundary
+      context_boundary_time = current_time - context_ttl - 1
+      exact_delta_threshold = current_time - delta_ttl
+
+      mock_time_expectation(unit: :second, time: current_time)
+      mock_list_contexts_expectation(context_id: context_id, inserted_at: context_boundary_time)
+      mock_delete_context_expectation(context_id: context_id)
+      mock_list_deltas_expectation(context_id: context_id, inserted_at: exact_delta_threshold - 1)
+      mock_delete_deltas_by_time(context_id: context_id, older_than_time: exact_delta_threshold)
+      mock_list_contexts_with_delta_counts_expectation([])
+
+      Cleanup.periodic_cleanup()
+    end
+  end
+
+  test "handles concurrent periodic cleanup calls", %{current_time: current_time} do
     context_id = "game:1"
-    device_id = "deviceA"
+    context_ttl = Application.get_env(:knot, :context_ttl)
+    delta_ttl = Application.get_env(:knot, :delta_ttl)
+    older_than_time = current_time - delta_ttl
+    context_time = current_time - context_ttl - 1
+    delta_time = current_time - delta_ttl - 1
 
-    Mock
-    |> expect(:delete_deltas_by_version, fn ^context_id, ^device_id, 5 -> :ok end)
-
-    Cleanup.cleanup_data(context_id, device_id, 5)
-  end
-
-  test "periodic_cleanup/1 cleans up inactive states based on TTL" do
-    context_id = "game:1"
-    current_time = :os.system_time(:second)
-    state_ttl = Application.get_env(:knot, :state_ttl, :timer.hours(6))
-    state_timestamp = current_time - state_ttl - 1
-
-    Mock
-    |> expect(:list_states, fn _opts ->
-      [%{context_id: context_id, timestamp: state_timestamp}]
-    end)
-    |> expect(:list_devices, fn _opts -> [] end)
-    |> expect(:delete_state, fn ^context_id -> :ok end)
-
-    Cleanup.periodic_cleanup()
-  end
-
-  test "periodic_cleanup/1 cleans up device deltas based on TTL" do
-    context_id = "game:1"
-    device_id = "deviceA"
-    current_time = :os.system_time(:second)
-    delta_ttl = Application.get_env(:knot, :delta_ttl, :timer.hours(3))
-    delta_timestamp = current_time - delta_ttl - 1
-    older_than_timestamp = current_time - delta_ttl
-
-    Mock
-    |> expect(:list_states, fn _opts -> [] end)
-    |> expect(:list_devices, fn _opts ->
-      [%{context_id: context_id, device_id: device_id, timestamp: delta_timestamp}]
-    end)
-    |> expect(:delete_deltas_by_time, fn ^context_id, ^device_id, ^older_than_timestamp -> :ok end)
-
-    Cleanup.periodic_cleanup()
-  end
-
-  test "periodic_cleanup/1 does not delete active states or deltas" do
-    context_id = "game:1"
-    device_id = "deviceA"
-    current_time = :os.system_time(:second)
-    state_ttl = Application.get_env(:knot, :state_ttl, :timer.hours(6))
-    delta_ttl = Application.get_env(:knot, :delta_ttl, :timer.hours(3))
-    active_state_timestamp = current_time - state_ttl + 100
-    active_delta_timestamp = current_time - delta_ttl + 100
-
-    Mock
-    |> expect(:list_states, fn _opts ->
-      [%{context_id: context_id, timestamp: active_state_timestamp}]
-    end)
-    |> expect(:list_devices, fn _opts ->
-      [%{context_id: context_id, device_id: device_id, timestamp: active_delta_timestamp}]
-    end)
-
-    Cleanup.periodic_cleanup()
-  end
-
-  test "periodic_cleanup/1 handles empty states and devices gracefully" do
-    Mock
-    |> expect(:list_states, fn _opts -> [] end)
-    |> expect(:list_devices, fn _opts -> [] end)
-
-    Cleanup.periodic_cleanup()
-  end
-
-  test "handles boundary TTL values correctly" do
-    context_id = "game:1"
-    device_id = "deviceA"
-    current_time = :os.system_time(:second)
-    state_ttl = Application.get_env(:knot, :state_ttl, :timer.hours(6))
-    delta_ttl = Application.get_env(:knot, :delta_ttl, :timer.hours(3))
-
-    # Timestamps set just outside the TTL boundary
-    state_boundary_timestamp = current_time - state_ttl - 1
-    exact_delta_threshold = current_time - delta_ttl
-
-    Mock
-    |> expect(:list_states, fn _opts ->
-      [%{context_id: context_id, timestamp: state_boundary_timestamp}]
-    end)
-    |> expect(:list_devices, fn _opts ->
-      [%{context_id: context_id, device_id: device_id, timestamp: exact_delta_threshold - 1}]
-    end)
-
-    # Cleanup should occur because the timestamps match TTL boundaries
-    Mock
-    |> expect(:delete_deltas_by_time, fn ^context_id, ^device_id, ^exact_delta_threshold ->
-      :ok
-    end)
-    |> expect(:delete_state, fn ^context_id ->
-      :ok
-    end)
-
-    Cleanup.periodic_cleanup()
-    verify!()
-  end
-
-  test "handles concurrent periodic cleanup calls" do
-    context_id = "game:1"
-    device_id = "deviceA"
-    current_time = :os.system_time(:second)
-    state_ttl = Application.get_env(:knot, :state_ttl, :timer.hours(6))
-    delta_ttl = Application.get_env(:knot, :delta_ttl, :timer.hours(3))
-    older_than_timestamp = current_time - delta_ttl
-    state_timestamp = current_time - state_ttl - 1
-    delta_timestamp = current_time - delta_ttl - 1
-
-    Mock
-    |> expect(:list_states, 5, fn _opts ->
-      [%{context_id: context_id, timestamp: state_timestamp}]
-    end)
-    |> expect(:delete_state, 5, fn ^context_id -> :ok end)
-
-    Mock
-    |> expect(:list_devices, 5, fn _opts ->
-      [%{context_id: context_id, device_id: device_id, timestamp: delta_timestamp}]
-    end)
-    |> expect(:delete_deltas_by_time, 5, fn ^context_id, ^device_id, ^older_than_timestamp ->
-      :ok
-    end)
+    mock_time_expectation([unit: :second, time: current_time], 5)
+    mock_list_contexts_expectation([context_id: context_id, inserted_at: context_time], 5)
+    mock_delete_context_expectation([context_id: context_id], 5)
+    mock_list_deltas_expectation([context_id: context_id, inserted_at: delta_time], 5)
+    mock_delete_deltas_by_time([context_id: context_id, older_than_time: older_than_time], 5)
+    mock_list_contexts_with_delta_counts_expectation([], 5)
 
     tasks =
       Enum.map(1..5, fn _ ->

@@ -5,26 +5,26 @@ defmodule Knot.DeltaTest do
 
   describe "calculate_delta/2" do
     test "calculates added keys" do
-      current_state = %{name: "Alice"}
-      new_state = %{name: "Alice", age: 30}
+      current_context = %{name: "Alice"}
+      new_context = %{name: "Alice", age: 30}
 
-      delta = Delta.calculate_delta(current_state, new_state)
+      delta = Delta.calculate_delta(current_context, new_context)
       assert delta == %{age: %{action: :added, value: 30}}
     end
 
     test "calculates removed keys" do
-      current_state = %{name: "Alice", age: 30}
-      new_state = %{name: "Alice"}
+      current_context = %{name: "Alice", age: 30}
+      new_context = %{name: "Alice"}
 
-      delta = Delta.calculate_delta(current_state, new_state)
+      delta = Delta.calculate_delta(current_context, new_context)
       assert delta == %{age: %{action: :removed}}
     end
 
     test "calculates modified keys" do
-      current_state = %{name: "Alice", status: "online"}
-      new_state = %{name: "Alice", status: "offline"}
+      current_context = %{name: "Alice", status: "online"}
+      new_context = %{name: "Alice", status: "offline"}
 
-      delta = Delta.calculate_delta(current_state, new_state)
+      delta = Delta.calculate_delta(current_context, new_context)
       assert delta == %{status: %{action: :modified, old_value: "online", value: "offline"}}
     end
   end
