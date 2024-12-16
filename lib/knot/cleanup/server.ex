@@ -25,7 +25,7 @@ defmodule Knot.Cleanup.Server do
 
   ## Options
     - `:interval` (integer): Time interval in milliseconds for periodic cleanup (default: 1 hour).
-    - `:backend_opts` (Keyword.t): Options passed to backend listing functions.
+    - `:backend_opts` (Keyword.t): Options passed to backend listing functions (see "Common Options" in the `Knot` module).
 
   ## Example
 

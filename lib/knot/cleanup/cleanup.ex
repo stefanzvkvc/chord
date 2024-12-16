@@ -34,8 +34,7 @@ defmodule Knot.Cleanup do
   the configured TTL values, and removes stale entries.
 
   ## Parameters
-    - `opts` (Keyword.t): Optional parameters for fetching contexts and deltas. Examples include:
-      - `:limit` - Limit the number of contexts or deltas fetched in each call.
+    - `opts` (Keyword.t): Optional parameters for fetching contexts and deltas (see "Common Options" in the `Knot` module).
 
   ## Returns
     - `:ok` after performing the cleanup.

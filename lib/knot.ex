@@ -11,7 +11,7 @@ defmodule Knot do
     - Global context and delta synchronization.
     - Flexible backends with built-in ETS support.
     - Customizable delta formatting.
-    - Customizable time providing.
+    - Customizable time provider.
     - Periodic cleanup with an optional Knot.Cleanup.Server.
 
   ## Configuration
@@ -27,6 +27,16 @@ defmodule Knot do
         delta_formatter: Knot.Delta.Formatter.Default,
         time: MyCustomTimeProvider
 
+  ## Common Options
+
+  The following options are shared across several functions in this module and related modules:
+
+    - `:context_id` - The identifier for the context.
+    - `:version` - The version number for tracking state changes.
+    - `:inserted_at` - The timestamp when the context or delta was created.
+    - `:limit` - The maximum number of contexts or deltas to fetch.
+    - `:offset` - The number of entries to skip when fetching.
+    - `:order` - The sort order for results (`:asc` or `:desc`).
   """
 
   alias Knot.{Context, Cleanup}
@@ -104,7 +114,7 @@ defmodule Knot do
 
   ## Parameters
 
-    - `opts` - Keyword options to filter contexts (e.g., `limit`, `offset`).
+    - `opts` (Keyword.t): Optional parameters for filtering contexts and deltas (see "Common Options").
 
   ## Returns
 
@@ -115,14 +125,16 @@ defmodule Knot do
     Cleanup.periodic_cleanup(opts)
   end
 
-  # CleanupServer Management API
+  # Cleanup.Server Management API
 
   @doc """
   Starts the Cleanup.Server for periodic cleanup.
 
   ## Parameters
 
-    - `opts` - Options for the Cleanup.Server (e.g., `interval`, `backend_opts`).
+    - `opts` - Options for the Cleanup.Server. Examples include:
+      - `:interval` - The interval (in milliseconds) between cleanup executions.
+      - `:backend_opts` - A keyword list of options passed to backend listing functions (see "Common Options").
 
   ## Returns
 
