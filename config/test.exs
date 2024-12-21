@@ -1,2 +1,2 @@
 import Config
-config :knot, :backend, Knot.Backend.Mock
+config :chord, :backend, Chord.Backend.Mock

@@ -1,9 +1,9 @@
-defmodule Knot.MixProject do
+defmodule Chord.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :knot,
+      app: :chord,
       version: "0.1.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
@@ -21,6 +21,8 @@ defmodule Knot.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:redix, "~> 1.5"},
+      {:jason, "~> 1.4"},
       {:mox, "~> 1.0", only: :test}
     ]
   end
