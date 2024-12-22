@@ -202,7 +202,7 @@ defmodule Chord.Context.Manager do
           {:full_context, map()} | {:delta, map()} | {:no_change, integer()} | {:error, term()}
   def sync_context(context_id, client_version) do
     case backend().get_context(context_id) do
-      {:ok, %{version: version}} ->
+      {:ok, %{version: version} = context} ->
         case determine_sync_action(client_version, version) do
           :full_context -> {:full_context, context}
           :no_change -> {:no_change, version}

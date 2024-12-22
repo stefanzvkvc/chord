@@ -13,34 +13,27 @@ defmodule Chord.Backend.Redis do
   """
 
   @behaviour Chord.Backend.Behaviour
-
-  alias Redix, as: RedisClient
-
+  @default_time_provider Chord.Utils.Time
   @context_prefix "chord:context"
   @delta_prefix "chord:delta"
+
+  alias Redix, as: RedisClient
 
   # Context Operations
   @impl true
   def set_context(context_id, context, version) do
-    key = "#{@context_prefix}:#{context_id}"
-    inserted_at = current_time()
-    context = term_to_binary(context)
+    key = redis_key(@context_prefix, context_id)
+    inserted_at = time_provider().current_time(:second)
+    payload = prepare_payload(:context, context, version, inserted_at)
 
-    payload = %{
-      "context" => context,
-      "version" => version,
-      "inserted_at" => inserted_at
-    }
-
-    execute_redis(["HSET", key | serialize_hash(payload)], fn _ ->
-      {:ok,
-       %{context_id: context_id, context: context, version: version, inserted_at: inserted_at}}
+    execute_redis(["HSET", key | serialize_payload(:context, payload)], fn _ ->
+      {:ok, Map.put(payload, :context_id, context_id)}
     end)
   end
 
   @impl true
   def get_context(context_id) do
-    key = "#{@context_prefix}:#{context_id}"
+    key = redis_key(@context_prefix, context_id)
 
     execute_redis(["HGETALL", key], fn
       [] ->
@@ -48,73 +41,38 @@ defmodule Chord.Backend.Redis do
 
       result ->
         map = deserialize_hash(result)
-
-        {:ok,
-         %{
-           context_id: context_id,
-           context: binary_to_term(map["context"]),
-           version: String.to_integer(map["version"]),
-           inserted_at: String.to_integer(map["inserted_at"])
-         }}
+        {:ok, deserialize_payload(:context, map, context_id)}
     end)
   end
 
   @impl true
   def delete_context(context_id) do
-    key = "#{@context_prefix}:#{context_id}"
+    key = redis_key(@context_prefix, context_id)
     execute_redis(["DEL", key], fn _ -> :ok end)
   end
 
   # Delta Operations
   @impl true
   def set_delta(context_id, delta, version) do
-    key = "#{@delta_prefix}:#{context_id}"
-    inserted_at = Integer.to_string(current_time())
+    key = redis_key(@delta_prefix, context_id)
+    inserted_at = time_provider().current_time(:second)
+    payload = prepare_payload(:delta, delta, version, inserted_at)
 
-    delta =
-      delta
-      |> term_to_binary()
-      |> Base.encode64()
-
-    payload = %{
-      "version" => version,
-      "delta" => delta,
-      "inserted_at" => inserted_at
-    }
-
-    execute_redis(["ZADD", key, "#{version}", serialize(payload)], fn _ ->
-      {:ok,
-       %{
-         context_id: context_id,
-         delta: delta,
-         version: version,
-         inserted_at: String.to_integer(inserted_at)
-       }}
+    execute_redis(["ZADD", key, "#{version}", serialize_payload(:delta, payload)], fn _ ->
+      {:ok, Map.put(payload, :context_id, context_id)}
     end)
   end
 
   @impl true
   def get_deltas(context_id, client_version) do
-    key = "#{@delta_prefix}:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
 
     execute_redis(["ZRANGEBYSCORE", key, "#{client_version + 1}", "+inf"], fn
       [] ->
         {:error, :not_found}
 
       result ->
-        deltas =
-          Enum.map(result, fn item ->
-            map = deserialize(item)
-            binary_delta = Base.decode64!(map["delta"])
-            delta = binary_to_term(binary_delta)
-
-            %{
-              context_id: context_id,
-              delta: delta,
-              version: map["version"],
-              inserted_at: map["inserted_at"]
-            }
-          end)
+        deltas = Enum.map(result, &deserialize_payload(:delta, &1, context_id))
 
         {:ok, deltas}
     end)
@@ -122,19 +80,19 @@ defmodule Chord.Backend.Redis do
 
   @impl true
   def delete_deltas_for_context(context_id) do
-    key = "#{@delta_prefix}:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
     execute_redis(["DEL", key], fn _ -> :ok end)
   end
 
   @impl true
   def delete_deltas_by_time(context_id, older_than_time) do
-    key = "#{@delta_prefix}:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
     execute_redis(["ZREMRANGEBYSCORE", key, "-inf", "(#{older_than_time}"], fn _ -> :ok end)
   end
 
   @impl true
   def delete_deltas_exceeding_threshold(context_id, threshold) do
-    key = "#{@delta_prefix}:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
 
     execute_redis(["ZCARD", key], fn
       count when count > threshold ->
@@ -147,54 +105,119 @@ defmodule Chord.Backend.Redis do
 
   @impl true
   def list_contexts(opts \\ []) do
-    list_keys_with_pattern(@context_prefix, opts, :contexts)
+    list_keys_with_pattern(@context_prefix, opts, &get_context/1)
   end
 
   @impl true
   def list_deltas(opts \\ []) do
-    list_keys_with_pattern(@delta_prefix, opts, :deltas)
+    list_keys_with_pattern(@delta_prefix, opts, fn id -> get_deltas(id, 0) end)
   end
 
   @impl true
   def list_contexts_with_delta_counts(_opts) do
-    pattern = "#{@delta_prefix}:*"
+    pattern = redis_key(@delta_prefix, "*")
 
     execute_redis(["KEYS", pattern], fn
       [] ->
         {:ok, []}
 
       keys ->
-        counts =
-          Enum.map(keys, fn key ->
-            [_, context_id] = String.split(key, ":")
-            {:ok, count} = execute_redis(["ZCARD", key], fn res -> {:ok, res} end)
-            %{context_id: context_id, count: count}
-          end)
-
+        counts = Enum.map(keys, &fetch_delta_count/1)
         {:ok, counts}
     end)
   end
 
   # Helpers
-  defp list_keys_with_pattern(prefix, opts, type) do
-    pattern = "#{prefix}:*"
+  defp prepare_payload(:context, data, version, inserted_at) do
+    %{
+      context: data,
+      version: version,
+      inserted_at: inserted_at
+    }
+  end
+
+  defp prepare_payload(:delta, data, version, inserted_at) do
+    %{
+      delta: data,
+      version: version,
+      inserted_at: inserted_at
+    }
+  end
+
+  defp serialize_payload(:context, payload) do
+    payload
+    |> Map.update!(:context, &term_to_binary/1)
+    |> to_redis_format(:context)
+  end
+
+  defp serialize_payload(:delta, payload) do
+    payload
+    |> Map.update!(:delta, &(&1 |> term_to_binary() |> Base.encode64()))
+    |> to_redis_format(:delta)
+  end
+
+  defp deserialize_payload(:context, map, context_id) do
+    %{
+      context_id: context_id,
+      context: binary_to_term(map["context"]),
+      version: String.to_integer(map["version"]),
+      inserted_at: String.to_integer(map["inserted_at"])
+    }
+  end
+
+  defp deserialize_payload(:delta, map, context_id) do
+    map = Jason.decode!(map)
+
+    %{
+      context_id: context_id,
+      delta: map["delta"] |> Base.decode64!() |> binary_to_term(),
+      version: map["version"],
+      inserted_at: map["inserted_at"]
+    }
+  end
+
+  defp deserialize_hash(payload) do
+    payload
+    |> Enum.chunk_every(2)
+    |> Enum.map(fn [key, value] -> {key, value} end)
+    |> Map.new()
+  end
+
+  defp to_redis_format(payload, :context) do
+    Enum.flat_map(payload, fn {k, v} -> [Atom.to_string(k), v] end)
+  end
+
+  defp to_redis_format(payload, :delta) do
+    Jason.encode!(payload)
+  end
+
+  defp fetch_delta_count(key) do
+    [_, _, context_id] = String.split(key, ":")
+    {:ok, count} = execute_redis(["ZCARD", key], fn res -> {:ok, res} end)
+    %{context_id: context_id, count: count}
+  end
+
+  defp list_keys_with_pattern(prefix, opts, fetch_fun) do
+    pattern = redis_key(prefix, "*")
 
     execute_redis(["KEYS", pattern], fn
       [] ->
         {:ok, []}
 
       keys ->
-        {:ok, results} =
-          Enum.flat_map(keys, fn key ->
-            id = String.replace(key, "#{prefix}:", "")
+        results = fetch_results(keys, prefix, fetch_fun)
+        {:ok, apply_list_filters(results, opts)}
+    end)
+  end
 
-            case type do
-              :contexts -> get_context(id)
-              :deltas -> get_deltas(id, 0)
-            end
-          end)
+  defp fetch_results(keys, prefix, fetch_fun) do
+    Enum.flat_map(keys, fn key ->
+      param = String.replace_prefix(key, prefix <> ":", "")
 
-        {:ok, results |> apply_list_filters(opts)}
+      case fetch_fun.(param) do
+        {:ok, result} -> List.wrap(result)
+        _ -> []
+      end
     end)
   end
 
@@ -205,35 +228,37 @@ defmodule Chord.Backend.Redis do
 
     list
     |> maybe_reverse(order)
-    |> Enum.slice(offset, limit)
+    |> apply_offset_and_limit(offset, limit)
   end
 
   defp maybe_reverse(list, :asc), do: list
   defp maybe_reverse(list, :desc), do: Enum.reverse(list)
 
+  defp apply_offset_and_limit(list, offset, :infinity) do
+    Enum.drop(list, offset)
+  end
+
+  defp apply_offset_and_limit(list, offset, limit) do
+    Enum.slice(list, offset, limit)
+  end
+
+  defp redis_key(prefix, context_id), do: "#{prefix}:#{context_id}"
+
   defp execute_redis(command, callback) do
     redis_client()
     |> RedisClient.command(command)
     |> case do
-      {:ok, result} -> callback.(result)
-      {:error, reason} -> {:error, reason}
+      {:ok, result} ->
+        callback.(result)
+
+      {:error, reason} ->
+        {:error, reason}
     end
-  end
-
-  defp redis_client(), do: Application.fetch_env!(:chord, :redis_client)
-  defp current_time, do: Application.fetch_env!(:chord, :time_provider).current_time(:second)
-
-  defp serialize(payload), do: Jason.encode!(payload)
-  defp deserialize(payload), do: Jason.decode!(payload)
-  defp serialize_hash(payload), do: Enum.flat_map(payload, fn {k, v} -> [k, v] end)
-
-  defp deserialize_hash(payload) do
-    payload
-    |> Enum.chunk_every(2)
-    |> Enum.map(fn [key, value] -> {key, value} end)
-    |> Map.new()
   end
 
   defp binary_to_term(binary), do: :erlang.binary_to_term(binary)
   defp term_to_binary(term), do: :erlang.term_to_binary(term)
+
+  defp redis_client(), do: Application.fetch_env!(:chord, :redis_client)
+  defp time_provider, do: Application.get_env(:chord, :time_provider, @default_time_provider)
 end
