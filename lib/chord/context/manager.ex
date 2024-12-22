@@ -60,7 +60,7 @@ defmodule Chord.Context.Manager do
   """
   @spec set_context(context_id :: any(), new_context :: map()) :: {:ok, map()} | {:error, term()}
   def set_context(context_id, new_context) do
-    {:ok, %{context: old_context, version: old_version}} = get_context(context_id)
+    %{context: old_context, version: old_version} = get_or_initialize_context(context_id)
     new_version = old_version + 1
 
     delta = Delta.calculate_delta(old_context, new_context)
@@ -83,7 +83,7 @@ defmodule Chord.Context.Manager do
     - `{:ok, map()}` if context exists.
     - `{:error, :not_found}` if no context is available.
   """
-  @spec get_context(context_id :: any()) :: {:ok, map()} | {:error, :not_found}
+  @spec get_context(context_id :: any()) :: {:ok, map()} | {:error, term()}
   def get_context(context_id) do
     backend().get_context(context_id)
   end
@@ -103,17 +103,22 @@ defmodule Chord.Context.Manager do
   """
   @spec update_context(context_id :: any(), changes :: map()) :: {:ok, map()} | {:error, term()}
   def update_context(context_id, changes) do
-    {:ok, %{context: old_context, version: old_version}} = get_context(context_id)
-    updated_context = MapTransform.deep_merge(old_context, changes)
-    new_version = old_version + 1
+    case backend().get_context(context_id) do
+      {:ok, %{context: old_context, version: old_version}} ->
+        updated_context = MapTransform.deep_merge(old_context, changes)
+        new_version = old_version + 1
 
-    delta = Delta.calculate_delta(old_context, updated_context)
+        delta = Delta.calculate_delta(old_context, updated_context)
 
-    with {:ok, context} <- backend().set_context(context_id, updated_context, new_version),
-         {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
-      {:ok, %{context: context, delta: delta}}
-    else
-      error -> error
+        with {:ok, context} <- backend().set_context(context_id, updated_context, new_version),
+             {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
+          {:ok, %{context: context, delta: delta}}
+        else
+          error -> error
+        end
+
+      {:error, _error} = error ->
+        error
     end
   end
 
@@ -194,14 +199,18 @@ defmodule Chord.Context.Manager do
     - `{:no_change, integer()}` if the client has the latest version.
   """
   @spec sync_context(context_id :: any(), client_version :: integer() | nil) ::
-          {:full_context, map()} | {:delta, map()} | {:no_change, integer()}
+          {:full_context, map()} | {:delta, map()} | {:no_change, integer()} | {:error, term()}
   def sync_context(context_id, client_version) do
-    {:ok, %{version: version} = context} = get_context(context_id)
+    case backend().get_context(context_id) do
+      {:ok, %{version: version}} ->
+        case determine_sync_action(client_version, version) do
+          :full_context -> {:full_context, context}
+          :no_change -> {:no_change, version}
+          :deltas -> sync_deltas_or_fallback(context_id, context, client_version)
+        end
 
-    case determine_sync_action(client_version, version) do
-      :full_context -> {:full_context, context}
-      :no_change -> {:no_change, version}
-      :deltas -> sync_deltas_or_fallback(context_id, context, client_version)
+      {:error, _error} = error ->
+        error
     end
   end
 
@@ -215,6 +224,13 @@ defmodule Chord.Context.Manager do
 
       _ ->
         {:full_context, context}
+    end
+  end
+
+  defp get_or_initialize_context(context_id) do
+    case backend().get_context(context_id) do
+      {:error, :not_found} -> %{context: %{}, version: 0}
+      {:ok, context} -> context
     end
   end
 
