@@ -1,11 +1,11 @@
 defmodule Chord.Context.ManagerTest do
   use ExUnit.Case, async: true
-  import TestHelpers
+  import Chord.Support.MocksHelpers.Backend
   alias Chord.Context.Manager
   alias Chord.Delta
 
   setup do
-    Application.put_env(:chord, :backend, Chord.Backend.Mock)
+    Application.put_env(:chord, :backend, Chord.Support.Mocks.Backend)
     Application.put_env(:chord, :delta_threshold, 100)
 
     context_id = "group:1"
@@ -30,7 +30,7 @@ defmodule Chord.Context.ManagerTest do
       old_context: old_context,
       current_time: current_time
     } do
-      mock_get_context_expectation(
+      mock_get_context(
         context_id: context_id,
         context: old_context,
         version: 1,
@@ -55,21 +55,21 @@ defmodule Chord.Context.ManagerTest do
     } do
       delta = Delta.calculate_delta(old_context, new_context)
 
-      mock_get_context_expectation(
+      mock_get_context(
         context_id: context_id,
         context: old_context,
         version: 1,
         inserted_at: current_time
       )
 
-      mock_set_context_expectation(
+      mock_set_context(
         context_id: context_id,
         context: new_context,
         version: 2,
         inserted_at: current_time
       )
 
-      mock_set_delta_expectation(
+      mock_set_delta(
         context_id: context_id,
         delta: delta,
         version: 2,
@@ -104,21 +104,21 @@ defmodule Chord.Context.ManagerTest do
       updated_context = Chord.Utils.Context.MapTransform.deep_merge(old_context, partial_update)
       delta = Delta.calculate_delta(old_context, updated_context)
 
-      mock_get_context_expectation(
+      mock_get_context(
         context_id: context_id,
         context: old_context,
         version: 1,
         inserted_at: current_time
       )
 
-      mock_set_context_expectation(
+      mock_set_context(
         context_id: context_id,
         context: updated_context,
         version: 2,
         inserted_at: current_time
       )
 
-      mock_set_delta_expectation(
+      mock_set_delta(
         context_id: context_id,
         delta: delta,
         version: 2,
@@ -152,7 +152,7 @@ defmodule Chord.Context.ManagerTest do
       old_context: old_context,
       current_time: current_time
     } do
-      mock_get_context_expectation(
+      mock_get_context(
         context_id: context_id,
         context: old_context,
         version: 1,
@@ -174,7 +174,7 @@ defmodule Chord.Context.ManagerTest do
       old_context: old_context,
       current_time: current_time
     } do
-      mock_get_context_expectation(
+      mock_get_context(
         context_id: context_id,
         context: old_context,
         version: 1,
@@ -193,14 +193,14 @@ defmodule Chord.Context.ManagerTest do
     } do
       delta = Delta.calculate_delta(old_context, new_context)
 
-      mock_get_context_expectation(
+      mock_get_context(
         context_id: context_id,
         context: new_context,
         version: 2,
         inserted_at: current_time
       )
 
-      mock_get_deltas_expectation(
+      mock_get_deltas(
         context_id: context_id,
         delta: delta,
         version: 1,
@@ -219,14 +219,14 @@ defmodule Chord.Context.ManagerTest do
       old_context: old_context,
       current_time: current_time
     } do
-      mock_get_context_expectation(
+      mock_get_context(
         context_id: context_id,
         context: old_context,
         version: 1,
         inserted_at: current_time
       )
 
-      mock_get_deltas_expectation(
+      mock_get_deltas(
         context_id: context_id,
         version: 0,
         error: {:error, :not_found}
@@ -246,8 +246,8 @@ defmodule Chord.Context.ManagerTest do
   describe "Context Deletion" do
     test "deletes context for a given context_id" do
       context_id = "game:1"
-      mock_delete_context_expectation(context_id: context_id)
-      mock_delete_deltas_for_context_expectation(context_id: context_id)
+      mock_delete_context(context_id: context_id)
+      mock_delete_deltas_for_context(context_id: context_id)
 
       assert Manager.delete_context(context_id) == :ok
     end
@@ -259,7 +259,7 @@ defmodule Chord.Context.ManagerTest do
       old_context: old_context,
       current_time: current_time
     } do
-      mock_get_context_expectation(
+      mock_get_context(
         context_id: context_id,
         context: old_context,
         version: 1,
@@ -281,7 +281,7 @@ defmodule Chord.Context.ManagerTest do
     end
 
     test "handles missing context gracefully during export", %{context_id: context_id} do
-      mock_get_context_expectation(context_id: context_id, error: {:error, :not_found})
+      mock_get_context(context_id: context_id, error: {:error, :not_found})
       assert Manager.export_context(context_id) == {:error, :not_found}
     end
 
@@ -290,7 +290,7 @@ defmodule Chord.Context.ManagerTest do
       old_context: old_context
     } do
       Application.delete_env(:chord, :export_callback)
-      mock_get_context_expectation(context_id: context_id, context: old_context, version: 1)
+      mock_get_context(context_id: context_id, context: old_context, version: 1)
       assert Manager.export_context(context_id) == {:error, :no_export_callback}
     end
   end

@@ -7,7 +7,8 @@ defmodule Chord.MixProject do
       version: "0.1.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      elixirc_paths: elixirc_paths(Mix.env())
     ]
   end
 
@@ -26,4 +27,7 @@ defmodule Chord.MixProject do
       {:mox, "~> 1.0", only: :test}
     ]
   end
+
+  defp elixirc_paths(:test), do: ["test/support", "lib"]
+  defp elixirc_paths(_), do: ["lib"]
 end

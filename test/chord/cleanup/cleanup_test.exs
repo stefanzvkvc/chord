@@ -1,11 +1,12 @@
 defmodule Chord.CleanupTest do
   use ExUnit.Case, async: true
-  import TestHelpers
+  import Chord.Support.MocksHelpers.Backend
+  import Chord.Support.MocksHelpers.Time
   alias Chord.Cleanup
 
   setup do
-    Application.put_env(:chord, :backend, Chord.Backend.Mock)
-    Application.put_env(:chord, :time_provider, Chord.Utils.Time.Mock)
+    Application.put_env(:chord, :backend, Chord.Support.Mocks.Backend)
+    Application.put_env(:chord, :time_provider, Chord.Support.Mocks.Time)
     Application.put_env(:chord, :context_ttl, :timer.hours(6))
     Application.put_env(:chord, :context_auto_delete, false)
     Application.put_env(:chord, :delta_ttl, :timer.hours(3))
@@ -20,9 +21,9 @@ defmodule Chord.CleanupTest do
     } do
       Application.put_env(:chord, :context_auto_delete, false)
 
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_deltas_expectation([])
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_time(unit: :second, time: current_time)
+      mock_list_deltas([])
+      mock_list_contexts_with_delta_counts([])
 
       Cleanup.periodic_cleanup()
     end
@@ -36,13 +37,13 @@ defmodule Chord.CleanupTest do
       context_ttl = Application.get_env(:chord, :context_ttl)
       context_time = current_time - context_ttl - 1
 
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_contexts_expectation(context_id: context_id, inserted_at: context_time)
-      mock_get_context_expectation(context_id: context_id, context: context, version: 1)
-      mock_delete_context_expectation(context_id: context_id)
-      mock_delete_deltas_for_context_expectation(context_id: context_id)
-      mock_list_deltas_expectation([])
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_time(unit: :second, time: current_time)
+      mock_list_contexts(context_id: context_id, inserted_at: context_time)
+      mock_get_context(context_id: context_id, context: context, version: 1)
+      mock_delete_context(context_id: context_id)
+      mock_delete_deltas_for_context(context_id: context_id)
+      mock_list_deltas([])
+      mock_list_contexts_with_delta_counts([])
 
       Cleanup.periodic_cleanup()
     end
@@ -55,18 +56,18 @@ defmodule Chord.CleanupTest do
       context_ttl = Application.get_env(:chord, :context_ttl)
       active_context_time = current_time - context_ttl + 100
 
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_contexts_expectation(context_id: context_id, inserted_at: active_context_time)
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_time(unit: :second, time: current_time)
+      mock_list_contexts(context_id: context_id, inserted_at: active_context_time)
+      mock_list_contexts_with_delta_counts([])
     end
 
     test "handles empty contexts gracefully", %{
       current_time: current_time
     } do
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_contexts_expectation([])
-      mock_list_deltas_expectation([])
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_time(unit: :second, time: current_time)
+      mock_list_contexts([])
+      mock_list_deltas([])
+      mock_list_contexts_with_delta_counts([])
 
       Cleanup.periodic_cleanup()
     end
@@ -79,10 +80,10 @@ defmodule Chord.CleanupTest do
       delta_time = current_time - delta_ttl - 1
       older_than_time = current_time - delta_ttl
 
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_deltas_expectation(context_id: context_id, inserted_at: delta_time)
+      mock_time(unit: :second, time: current_time)
+      mock_list_deltas(context_id: context_id, inserted_at: delta_time)
       mock_delete_deltas_by_time(context_id: context_id, older_than_time: older_than_time)
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_list_contexts_with_delta_counts([])
 
       Cleanup.periodic_cleanup()
     end
@@ -93,10 +94,10 @@ defmodule Chord.CleanupTest do
       context_id = "game:1"
       delta_threshold = Application.get_env(:chord, :delta_threshold)
 
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_deltas_expectation([])
+      mock_time(unit: :second, time: current_time)
+      mock_list_deltas([])
 
-      mock_list_contexts_with_delta_counts_expectation([
+      mock_list_contexts_with_delta_counts([
         %{context_id: context_id, count: delta_threshold + 10}
       ])
 
@@ -112,9 +113,9 @@ defmodule Chord.CleanupTest do
       delta_ttl = Application.get_env(:chord, :delta_ttl)
       active_delta_time = current_time - delta_ttl + 100
 
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_deltas_expectation(context_id: context_id, inserted_at: active_delta_time)
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_time(unit: :second, time: current_time)
+      mock_list_deltas(context_id: context_id, inserted_at: active_delta_time)
+      mock_list_contexts_with_delta_counts([])
 
       Cleanup.periodic_cleanup()
     end
@@ -122,9 +123,9 @@ defmodule Chord.CleanupTest do
     test "handles empty deltas gracefully", %{
       current_time: current_time
     } do
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_deltas_expectation([])
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_time(unit: :second, time: current_time)
+      mock_list_deltas([])
+      mock_list_contexts_with_delta_counts([])
 
       Cleanup.periodic_cleanup()
     end
@@ -138,12 +139,12 @@ defmodule Chord.CleanupTest do
     context_time = current_time - context_ttl - 1
     delta_time = current_time - delta_ttl - 1
 
-    mock_time_expectation([unit: :second, time: current_time], 5)
-    mock_list_contexts_expectation([context_id: context_id, inserted_at: context_time], 5)
-    mock_delete_context_expectation([context_id: context_id], 5)
-    mock_list_deltas_expectation([context_id: context_id, inserted_at: delta_time], 5)
+    mock_time([unit: :second, time: current_time], 5)
+    mock_list_contexts([context_id: context_id, inserted_at: context_time], 5)
+    mock_delete_context([context_id: context_id], 5)
+    mock_list_deltas([context_id: context_id, inserted_at: delta_time], 5)
     mock_delete_deltas_by_time([context_id: context_id, older_than_time: older_than_time], 5)
-    mock_list_contexts_with_delta_counts_expectation([], 5)
+    mock_list_contexts_with_delta_counts([], 5)
 
     tasks =
       Enum.map(1..5, fn _ ->

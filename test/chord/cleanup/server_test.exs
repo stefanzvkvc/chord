@@ -1,11 +1,13 @@
 defmodule Chord.Cleanup.ServerTest do
   use ExUnit.Case, async: true
+  import Chord.Support.MocksHelpers.Backend
+  import Chord.Support.MocksHelpers.Time
   import TestHelpers
   alias Chord.Cleanup.Server
 
   setup do
-    Application.put_env(:chord, :backend, Chord.Backend.Mock)
-    Application.put_env(:chord, :time_provider, Chord.Utils.Time.Mock)
+    Application.put_env(:chord, :backend, Chord.Support.Mocks.Backend)
+    Application.put_env(:chord, :time_provider, Chord.Support.Mocks.Time)
     Application.put_env(:chord, :context_ttl, :timer.hours(6))
     Application.put_env(:chord, :context_auto_delete, false)
     Application.put_env(:chord, :delta_ttl, :timer.hours(3))
@@ -43,16 +45,16 @@ defmodule Chord.Cleanup.ServerTest do
       context_time = current_time - context_ttl - 1
       delta_threshold = current_time - delta_ttl
 
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_contexts_expectation(context_id: context_id, inserted_at: context_time)
-      mock_delete_context_expectation(context_id: context_id)
-      mock_list_deltas_expectation(context_id: context_id, inserted_at: delta_threshold - 1)
+      mock_time(unit: :second, time: current_time)
+      mock_list_contexts(context_id: context_id, inserted_at: context_time)
+      mock_delete_context(context_id: context_id)
+      mock_list_deltas(context_id: context_id, inserted_at: delta_threshold - 1)
       mock_delete_deltas_by_time(context_id: context_id, older_than_time: delta_threshold)
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_list_contexts_with_delta_counts([])
 
       {:ok, pid} = Server.start_link(interval: 200, backend_opts: [])
-      allow_sharing_expectation(Chord.Utils.Time.Mock, self(), pid)
-      allow_sharing_expectation(Chord.Backend.Mock, self(), pid)
+      Mox.allow(Chord.Support.Mocks.Time, self(), pid)
+      Mox.allow(Chord.Support.Mocks.Backend, self(), pid)
 
       Process.sleep(300)
       assert Process.alive?(pid)
@@ -61,14 +63,14 @@ defmodule Chord.Cleanup.ServerTest do
 
   describe "Backend Configuration" do
     test "uses backend_opts for periodic cleanup", %{current_time: current_time} do
-      mock_time_expectation(unit: :second, time: current_time)
-      mock_list_contexts_expectation(limit: 10)
-      mock_list_deltas_expectation(limit: 10)
-      mock_list_contexts_with_delta_counts_expectation([])
+      mock_time(unit: :second, time: current_time)
+      mock_list_contexts(limit: 10)
+      mock_list_deltas(limit: 10)
+      mock_list_contexts_with_delta_counts([])
 
       {:ok, pid} = Server.start_link(interval: 200, backend_opts: [limit: 10])
-      allow_sharing_expectation(Chord.Utils.Time.Mock, self(), pid)
-      allow_sharing_expectation(Chord.Backend.Mock, self(), pid)
+      Mox.allow(Chord.Support.Mocks.Time, self(), pid)
+      Mox.allow(Chord.Support.Mocks.Backend, self(), pid)
 
       Process.sleep(300)
       assert Process.alive?(pid)

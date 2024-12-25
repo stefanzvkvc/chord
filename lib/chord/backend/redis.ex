@@ -17,8 +17,6 @@ defmodule Chord.Backend.Redis do
   @context_prefix "chord:context"
   @delta_prefix "chord:delta"
 
-  alias Redix, as: RedisClient
-
   # Context Operations
   @impl true
   def set_context(context_id, context, version) do
@@ -245,8 +243,8 @@ defmodule Chord.Backend.Redis do
   defp redis_key(prefix, context_id), do: "#{prefix}:#{context_id}"
 
   defp execute_redis(command, callback) do
-    redis_client()
-    |> RedisClient.command(command)
+    command
+    |> Chord.Utils.Redis.Client.command()
     |> case do
       {:ok, result} ->
         callback.(result)
@@ -258,7 +256,5 @@ defmodule Chord.Backend.Redis do
 
   defp binary_to_term(binary), do: :erlang.binary_to_term(binary)
   defp term_to_binary(term), do: :erlang.term_to_binary(term)
-
-  defp redis_client(), do: Application.fetch_env!(:chord, :redis_client)
   defp time_provider, do: Application.get_env(:chord, :time_provider, @default_time_provider)
 end

@@ -1,13 +1,17 @@
 import Config
 
+config :logger, :console,
+  format: "$time [$level] $metadata$message\n",
+  metadata: [:module, :function]
+
 config :chord,
   backend: Chord.Backend.Redis,
   # Context retention policy
   context_auto_delete: false,
   # Time-based state cleanup
   context_ttl: nil,
-  # Time-based state cleanup
-  delta_ttl: :timer.hours(2),
+  # Time-based delta cleanup
+  delta_ttl: :timer.hours(24),
   # Number of versions to retain
   delta_threshold: 100,
   # Default implementation for delta formatting

@@ -40,6 +40,7 @@ defmodule Chord.Context.Manager do
 
   """
 
+  require Logger
   alias Chord.Delta
   alias Chord.Utils.Context.MapTransform
   @default_backend Chord.Backend.ETS
@@ -60,16 +61,37 @@ defmodule Chord.Context.Manager do
   """
   @spec set_context(context_id :: any(), new_context :: map()) :: {:ok, map()} | {:error, term()}
   def set_context(context_id, new_context) do
+    Logger.debug("Setting context for #{inspect(context_id)}")
+
     %{context: old_context, version: old_version} = get_or_initialize_context(context_id)
-    new_version = old_version + 1
+
+    Logger.debug(
+      "Old context for #{inspect(context_id)}: #{inspect(old_context)} with version #{inspect(old_version)}"
+    )
 
     delta = Delta.calculate_delta(old_context, new_context)
 
-    with {:ok, context} <- backend().set_context(context_id, new_context, new_version),
-         {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
-      {:ok, %{context: context, delta: delta}}
+    if delta == %{} do
+      Logger.info("No changes detected for context #{inspect(context_id)}. Skipping update.")
+      {:ok, %{context: old_context, delta: delta}}
     else
-      error -> error
+      new_version = old_version + 1
+
+      Logger.debug("Delta calculated: #{inspect(delta)}")
+
+      with {:ok, context} <- backend().set_context(context_id, new_context, new_version),
+           {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
+        Logger.info(
+          "Context for #{inspect(context_id)} set successfully with version #{inspect(new_version)}"
+        )
+
+        {:ok, %{context: context, delta: delta}}
+      else
+        error ->
+          Logger.error("Failed to set context for #{inspect(context_id)}: #{inspect(error)}")
+
+          error
+      end
     end
   end
 
@@ -81,11 +103,24 @@ defmodule Chord.Context.Manager do
 
   ## Returns
     - `{:ok, map()}` if context exists.
-    - `{:error, :not_found}` if no context is available.
+    - `{:error, term()}` if no context is available.
   """
   @spec get_context(context_id :: any()) :: {:ok, map()} | {:error, term()}
   def get_context(context_id) do
-    backend().get_context(context_id)
+    Logger.debug("Fetching context for ID: #{inspect(context_id)}")
+
+    case backend().get_context(context_id) do
+      {:ok, context} ->
+        Logger.info("Successfully fetched context for ID: #{inspect(context_id)}")
+        {:ok, context}
+
+      {:error, reason} ->
+        Logger.warning(
+          "Failed to fetch context for ID: #{inspect(context_id)}. Reason: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -103,21 +138,44 @@ defmodule Chord.Context.Manager do
   """
   @spec update_context(context_id :: any(), changes :: map()) :: {:ok, map()} | {:error, term()}
   def update_context(context_id, changes) do
+    Logger.debug("Updating context for #{inspect(context_id)} with changes: #{inspect(changes)}")
+
     case backend().get_context(context_id) do
       {:ok, %{context: old_context, version: old_version}} ->
+        Logger.debug("Old context for #{inspect(context_id)}: #{inspect(old_context)}")
+
         updated_context = MapTransform.deep_merge(old_context, changes)
-        new_version = old_version + 1
 
         delta = Delta.calculate_delta(old_context, updated_context)
 
-        with {:ok, context} <- backend().set_context(context_id, updated_context, new_version),
-             {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
-          {:ok, %{context: context, delta: delta}}
+        if delta == %{} do
+          Logger.info("No changes detected for context #{inspect(context_id)}. Skipping update.")
+          {:ok, %{context: old_context, delta: delta}}
         else
-          error -> error
+          new_version = old_version + 1
+          Logger.debug("Updated context: #{inspect(updated_context)}")
+          Logger.debug("Delta calculated: #{inspect(delta)}")
+
+          with {:ok, context} <- backend().set_context(context_id, updated_context, new_version),
+               {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
+            Logger.info(
+              "Context for #{inspect(context_id)} updated successfully with version #{inspect(new_version)}"
+            )
+
+            {:ok, %{context: context, delta: delta}}
+          else
+            error ->
+              Logger.error(
+                "Failed to update context for #{inspect(context_id)}: #{inspect(error)}"
+              )
+
+              error
+          end
         end
 
       {:error, _error} = error ->
+        Logger.error("Failed to update context for #{inspect(context_id)}: #{inspect(error)}")
+
         error
     end
   end
@@ -134,11 +192,18 @@ defmodule Chord.Context.Manager do
   """
   @spec restore_context(context_id :: any()) :: {:ok, map()} | {:error, :not_found}
   def restore_context(context_id) do
+    Logger.debug("Restoring context for #{inspect(context_id)} from external provider")
+
     case get_context_from_external_storage(context_id) do
       {:ok, %{context: context, version: version}} ->
+        Logger.info(
+          "Successfully fetched context for #{inspect(context_id)} from external provider"
+        )
+
         backend().set_context(context_id, context, version)
 
       error ->
+        Logger.error("Failed to restore context for #{inspect(context_id)}: #{inspect(error)}")
         error
     end
   end
@@ -155,11 +220,20 @@ defmodule Chord.Context.Manager do
   """
   @spec delete_context(context_id :: any()) :: :ok | {:error, term()}
   def delete_context(context_id) do
+    Logger.debug("Deleting context and deltas for #{inspect(context_id)}")
+
     with :ok <- backend().delete_context(context_id),
          :ok <- backend().delete_deltas_for_context(context_id) do
+      Logger.info("Successfully deleted context and deltas for #{inspect(context_id)}")
+
       :ok
     else
-      error -> error
+      error ->
+        Logger.error(
+          "Failed to delete context or deltas for #{inspect(context_id)}: #{inspect(error)}"
+        )
+
+        error
     end
   end
 
@@ -175,11 +249,20 @@ defmodule Chord.Context.Manager do
   """
   @spec export_context(context_id :: any()) :: :ok | {:error, :not_found}
   def export_context(context_id) do
+    Logger.debug("Exporting context for #{inspect(context_id)}")
+
     with {:ok, context} <- backend().get_context(context_id),
          :ok <- call_export_callback(context) do
+      Logger.info("Successfully exported context for #{inspect(context_id)}")
+
       :ok
     else
-      error -> error
+      error ->
+        Logger.error(
+          "Failed to export context or deltas for #{inspect(context_id)}: #{inspect(error)}"
+        )
+
+        error
     end
   end
 
@@ -201,15 +284,34 @@ defmodule Chord.Context.Manager do
   @spec sync_context(context_id :: any(), client_version :: integer() | nil) ::
           {:full_context, map()} | {:delta, map()} | {:no_change, integer()} | {:error, term()}
   def sync_context(context_id, client_version) do
+    Logger.debug(
+      "Synchronizing context for #{inspect(context_id)} with client version #{inspect(client_version)}"
+    )
+
     case backend().get_context(context_id) do
       {:ok, %{version: version} = context} ->
-        case determine_sync_action(client_version, version) do
-          :full_context -> {:full_context, context}
-          :no_change -> {:no_change, version}
-          :deltas -> sync_deltas_or_fallback(context_id, context, client_version)
+        sync_action = determine_sync_action(client_version, version)
+        Logger.debug("Determined sync action: #{inspect(sync_action)}")
+
+        case sync_action do
+          :full_context ->
+            Logger.debug("Sending full context for #{inspect(context_id)}")
+
+            {:full_context, context}
+
+          :no_change ->
+            Logger.debug("No changes needed for #{inspect(context_id)}")
+
+            {:no_change, version}
+
+          :deltas ->
+            Logger.debug("Sending deltas for #{inspect(context_id)}")
+
+            sync_deltas_or_fallback(context_id, context, client_version)
         end
 
       {:error, _error} = error ->
+        Logger.error("Failed to sync context for #{inspect(context_id)}: #{inspect(error)}")
         error
     end
   end

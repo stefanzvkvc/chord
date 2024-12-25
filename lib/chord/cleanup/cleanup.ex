@@ -20,6 +20,8 @@ defmodule Chord.Cleanup do
       :ok
   """
 
+  require Logger
+
   @default_backend Chord.Backend.ETS
   @default_time_provider Chord.Utils.Time
   @default_context_auto_delete false
@@ -46,6 +48,7 @@ defmodule Chord.Cleanup do
   @spec periodic_cleanup(keyword()) :: :ok
   def periodic_cleanup(opts \\ []) do
     current_time = time_provider().current_time(:second)
+    Logger.info("Starting periodic cleanup at #{current_time} with options: #{inspect(opts)}")
 
     # Delete contexts (if auto-deletion is enabled)
     cleanup_contexts(current_time, opts)
@@ -56,6 +59,8 @@ defmodule Chord.Cleanup do
     # Delete deltas exceeding the threshold
     cleanup_deltas_by_threshold(opts)
 
+    Logger.info("Periodic cleanup completed at #{System.system_time(:second)}")
+
     :ok
   end
 
@@ -64,6 +69,8 @@ defmodule Chord.Cleanup do
     context_ttl = context_ttl()
 
     if context_auto_delete && context_ttl do
+      Logger.info("Cleaning up contexts older than #{context_ttl} seconds")
+
       {:ok, contexts} = backend().list_contexts(opts)
 
       Enum.each(contexts, fn %{
@@ -71,33 +78,84 @@ defmodule Chord.Cleanup do
                                inserted_at: state_time
                              } ->
         if current_time - state_time > context_ttl do
-          backend().delete_context(context_id)
-          backend().delete_deltas_for_context(context_id)
+          Logger.debug("Cleaning up context #{context_id}, last modified at #{state_time}")
+
+          with :ok <- backend().delete_context(context_id),
+               :ok <- backend().delete_deltas_for_context(context_id) do
+            Logger.info("Context #{inspect(context_id)} and related deltas successfully deleted")
+          else
+            error ->
+              Logger.error("Failed to delete context #{inspect(context_id)}: #{inspect(error)}")
+          end
+        else
+          Logger.debug("Skipping context #{context_id}, within TTL.")
         end
       end)
+    else
+      Logger.debug("Context auto-deletion is disabled or TTL is not set.")
     end
   end
 
   defp cleanup_deltas_by_time(current_time, opts) do
     delta_ttl = Application.get_env(:chord, :delta_ttl, @default_delta_ttl)
-    {:ok, deltas} = backend().list_deltas(opts)
 
-    Enum.each(deltas, fn %{context_id: context_id, inserted_at: delta_time} ->
-      if current_time - delta_time > delta_ttl do
-        backend().delete_deltas_by_time(context_id, current_time - delta_ttl)
-      end
-    end)
+    if delta_ttl do
+      Logger.info("Cleaning up deltas older than #{delta_ttl} seconds")
+
+      {:ok, deltas} = backend().list_deltas(opts)
+
+      Enum.each(deltas, fn %{context_id: context_id, inserted_at: delta_time} ->
+        if current_time - delta_time > delta_ttl do
+          Logger.debug(
+            "Cleaning up deltas for context #{context_id}, last modified at #{delta_time}"
+          )
+
+          result = backend().delete_deltas_by_time(context_id, current_time - delta_ttl)
+
+          case result do
+            :ok ->
+              Logger.info("Deltas for context #{inspect(context_id)} successfully deleted")
+
+            error ->
+              Logger.error("Delta cleanup failed with error: #{inspect(error)}")
+          end
+        else
+          Logger.debug("Skipping deltas for context #{context_id}, within TTL.")
+        end
+      end)
+    else
+      Logger.debug("Delta TTL is not set; skipping delta cleanup.")
+    end
   end
 
   defp cleanup_deltas_by_threshold(opts) do
     delta_threshold = Application.get_env(:chord, :delta_threshold, @default_delta_threshold)
-    {:ok, deltas} = backend().list_contexts_with_delta_counts(opts)
 
-    Enum.each(deltas, fn %{context_id: context_id, count: delta_count} ->
-      if delta_count > delta_threshold do
-        backend().delete_deltas_exceeding_threshold(context_id, delta_threshold)
-      end
-    end)
+    if delta_threshold do
+      Logger.info("Cleaning up deltas exceeding the threshold of #{delta_threshold}")
+
+      {:ok, deltas} = backend().list_contexts_with_delta_counts(opts)
+
+      Enum.each(deltas, fn %{context_id: context_id, count: delta_count} ->
+        if delta_count > delta_threshold do
+          Logger.debug("Deleting excess deltas for context #{context_id}, count: #{delta_count}")
+
+          case backend().delete_deltas_exceeding_threshold(context_id, delta_threshold) do
+            :ok ->
+              Logger.info("Excess deltas for context #{inspect(context_id)} successfully deleted")
+
+            error ->
+              Logger.error(
+                "Failed to delete excess deltas for context #{inspect(context_id)}: #{inspect(error)}"
+              )
+          end
+        else
+          Logger.debug("Skipping context #{context_id}, delta count within threshold.")
+        end
+      end)
+    else
+      Logger.debug("Delta threshold is not set; skipping threshold-based cleanup.")
+    end
   end
 
   @doc false

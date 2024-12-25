@@ -1,40 +1,70 @@
 defmodule Chord.Backend.ETSTest do
   use ExUnit.Case
-  import TestHelpers
+  import Chord.Support.MocksHelpers.Time
   alias Chord.Backend.ETS
 
   setup do
-    Application.put_env(:chord, :time_provider, Chord.Utils.Time.Mock)
+    Application.put_env(:chord, :time_provider, Chord.Support.Mocks.Time)
     # Ensure fresh ETS tables before each test
     :ets.new(:chord_context_table, [:named_table, :ordered_set, :public])
     :ets.new(:chord_context_history_table, [:named_table, :ordered_set, :public])
-    {:ok, current_time: 1_673_253_120}
+    current_time = 1_673_253_120
+    context_id = "test-context"
+    context = %{score: 0}
+    delta = %{score: %{action: :added, value: 100}}
+    version = 1
+
+    {:ok,
+     current_time: current_time,
+     context_id: context_id,
+     context: context,
+     version: version,
+     delta: delta}
   end
 
   describe "Context operations" do
-    test "set_context and get_context", %{current_time: current_time} do
-      context_id = "game:1"
-      context = %{score: 100}
-      version = 1
-      mock_time_expectation(unit: :second, time: current_time)
-      {:ok, _context} = ETS.set_context(context_id, context, version)
-
-      assert ETS.get_context(context_id) ==
-               {:ok,
-                %{
-                  context_id: context_id,
-                  context: context,
-                  version: version,
-                  inserted_at: current_time
-                }}
+    test "set_context", %{
+      current_time: current_time,
+      context_id: context_id,
+      context: context,
+      version: version
+    } do
+      mock_time(unit: :second, time: current_time)
+      {:ok, result} = ETS.set_context(context_id, context, version)
+      assert result[:context_id] == context_id
+      assert result[:version] == version
+      assert result[:inserted_at] == current_time
+      assert result[:context] == context
     end
 
-    test "delete_context", %{current_time: current_time} do
-      context_id = "game:2"
-      context = %{score: 50}
-      version = 1
+    test "get_context", %{
+      current_time: current_time,
+      context_id: context_id,
+      context: context,
+      version: version
+    } do
+      mock_time(unit: :second, time: current_time)
+      {:ok, result_1} = ETS.set_context(context_id, context, version)
+      {:ok, result_2} = ETS.get_context(context_id)
+      assert result_2[:context_id] == result_1[:context_id]
+      assert result_2[:version] == result_1[:version]
+      assert result_2[:inserted_at] == result_1[:inserted_at]
+      assert result_2[:context] == result_1[:context]
+    end
 
-      mock_time_expectation([unit: :second, time: current_time], 2)
+    test "context is not found", %{
+      context_id: context_id
+    } do
+      assert ETS.get_context(context_id) == {:error, :not_found}
+    end
+
+    test "delete_context", %{
+      current_time: current_time,
+      context_id: context_id,
+      context: context,
+      version: version
+    } do
+      mock_time([unit: :second, time: current_time], 2)
 
       {:ok, _context} = ETS.set_context(context_id, context, version)
       :ok = ETS.delete_context(context_id)
@@ -44,39 +74,49 @@ defmodule Chord.Backend.ETSTest do
   end
 
   describe "Delta operations" do
-    test "set_delta and get_deltas for a context", %{current_time: current_time} do
-      context_id = "game:1"
-      old_version = 1
-      new_version = 2
-      old_delta = %{score: %{action: :added, value: 100}}
-      new_delta = %{score: %{action: :modified, old_value: 100, value: 150}}
+    test "set_delta for a context", %{
+      current_time: current_time,
+      context_id: context_id,
+      version: version,
+      delta: delta
+    } do
+      mock_time(unit: :second, time: current_time)
 
-      mock_time_expectation([unit: :second, time: current_time], 2)
-
-      {:ok, _delta} = ETS.set_delta(context_id, old_delta, old_version)
-      {:ok, _delta} = ETS.set_delta(context_id, new_delta, new_version)
-
-      assert ETS.get_deltas(context_id, old_version) ==
-               {:ok,
-                [
-                  %{
-                    context_id: context_id,
-                    delta: new_delta,
-                    version: new_version,
-                    inserted_at: current_time
-                  }
-                ]}
-
-      assert ETS.get_deltas(context_id, new_version) == {:error, :not_found}
+      {:ok, result} = ETS.set_delta(context_id, delta, version)
+      assert result[:context_id] == context_id
+      assert result[:version] == version
+      assert result[:inserted_at] == current_time
+      assert result[:delta] == delta
     end
 
-    test "delete_deltas_by_time removes deltas older than time", %{current_time: current_time} do
-      context_id = "game:1"
+    test "get_deltas for a context", %{
+      current_time: current_time,
+      context_id: context_id,
+      version: version,
+      delta: delta
+    } do
+      mock_time(unit: :second, time: current_time)
+      {:ok, result_1} = ETS.set_delta(context_id, delta, version)
+      {:ok, [result_2]} = ETS.get_deltas(context_id, 0)
+      assert result_2[:context_id] == result_1[:context_id]
+      assert result_2[:version] == result_1[:version]
+      assert result_2[:inserted_at] == result_1[:inserted_at]
+      assert result_2[:delta] == result_1[:delta]
+    end
 
-      mock_time_expectation([unit: :second, time: current_time], 10)
+    test "deltas not found for a context", %{context_id: context_id} do
+      assert ETS.get_deltas(context_id, 0) == {:error, :not_found}
+    end
+
+    test "delete_deltas_by_time removes deltas older than time", %{
+      current_time: current_time,
+      context_id: context_id,
+      delta: delta
+    } do
+      mock_time([unit: :second, time: current_time], 10)
 
       Enum.each(1..10, fn version ->
-        delta = %{score: %{action: :added, value: version}}
+        delta = put_in(delta, [:score, :value], version)
         inserted_at = current_time - version
         :ets.insert(:chord_context_history_table, {{context_id, version}, delta, inserted_at})
       end)
@@ -87,14 +127,17 @@ defmodule Chord.Backend.ETSTest do
       assert Enum.count(remaining_deltas) == 5
     end
 
-    test "delete_deltas_exceeding_threshold removes excess deltas", %{current_time: current_time} do
-      context_id = "game:1"
+    test "delete_deltas_exceeding_threshold removes excess deltas", %{
+      current_time: current_time,
+      context_id: context_id,
+      delta: delta
+    } do
       threshold = 5
 
-      mock_time_expectation([unit: :second, time: current_time], 10)
+      mock_time([unit: :second, time: current_time], 10)
 
       Enum.each(1..10, fn version ->
-        delta = %{score: %{action: :added, value: version}}
+        delta = put_in(delta, [:score, :value], version)
         :ets.insert(:chord_context_history_table, {{context_id, version}, delta, current_time})
       end)
 
@@ -106,12 +149,16 @@ defmodule Chord.Backend.ETSTest do
   end
 
   describe "Listing operations" do
-    test "list_contexts returns all contexts with filters", %{current_time: current_time} do
-      mock_time_expectation([unit: :second, time: current_time], 3)
+    test "list_contexts returns all contexts with filters", %{
+      current_time: current_time,
+      context: context
+    } do
+      mock_time([unit: :second, time: current_time], 3)
 
       Enum.each(1..3, fn version ->
         context_id = "game:#{version}"
-        context = %{score: version * 10}
+        context = Map.update(context, :score, 0, &(&1 * 2))
+
         {:ok, _context} = ETS.set_context(context_id, context, version)
       end)
 
@@ -119,12 +166,15 @@ defmodule Chord.Backend.ETSTest do
       assert length(contexts) == 2
     end
 
-    test "list_deltas returns all deltas with filters", %{current_time: current_time} do
-      mock_time_expectation([unit: :second, time: current_time], 3)
+    test "list_deltas returns all deltas with filters", %{
+      current_time: current_time,
+      context_id: context_id,
+      delta: delta
+    } do
+      mock_time([unit: :second, time: current_time], 3)
 
       Enum.each(1..3, fn version ->
-        context_id = "game:1"
-        delta = %{score: %{action: :added, value: version}}
+        delta = put_in(delta, [:score, :value], version)
         {:ok, _delta} = ETS.set_delta(context_id, delta, version)
       end)
 
