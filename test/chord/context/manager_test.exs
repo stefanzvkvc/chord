@@ -101,7 +101,7 @@ defmodule Chord.Context.ManagerTest do
       partial_update: partial_update,
       current_time: current_time
     } do
-      updated_context = Chord.Utils.Context.MapTransform.deep_merge(old_context, partial_update)
+      updated_context = Chord.Utils.Context.MapTransform.deep_update(old_context, partial_update)
       delta = Delta.calculate_delta(old_context, updated_context)
 
       mock_get_context(

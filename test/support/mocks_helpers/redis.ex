@@ -1,8 +1,10 @@
 defmodule Chord.Support.MocksHelpers.Redis do
+  @context_prefix "chord:context"
+  @delta_prefix "chord:delta"
   # Define expectations for Redix commands.
   def mock_hset(opts) do
     context_id = opts[:context_id]
-    key = "chord:context:#{context_id}"
+    key = redis_key(@context_prefix, context_id)
 
     Mox.expect(Chord.Support.Mocks.Redis, :command, fn ["HSET", ^key | values] ->
       result = values |> Enum.chunk_every(2) |> Enum.count()
@@ -20,7 +22,7 @@ defmodule Chord.Support.MocksHelpers.Redis do
       version = opts[:version] |> Integer.to_string()
       context = opts[:context] |> :erlang.term_to_binary()
       inserted_at = opts[:inserted_at] |> Integer.to_string()
-      key = "chord:context:#{context_id}"
+      key = redis_key(@context_prefix, context_id)
 
       Mox.expect(Chord.Support.Mocks.Redis, :command, fn ["HGETALL", ^key] ->
         {:ok,
@@ -37,7 +39,8 @@ defmodule Chord.Support.MocksHelpers.Redis do
   end
 
   def mock_hdel(opts) do
-    key = "chord:context:#{opts[:context_id]}"
+    context_id = opts[:context_id]
+    key = redis_key(@context_prefix, context_id)
 
     Mox.expect(Chord.Support.Mocks.Redis, :command, fn ["DEL", ^key] ->
       {:ok, 1}
@@ -50,10 +53,15 @@ defmodule Chord.Support.MocksHelpers.Redis do
     delta = opts[:delta]
     inserted_at = opts[:inserted_at]
 
-    delta = prepare_payload(:delta, delta, version, inserted_at)
-    delta = serialize_payload(:delta, delta)
+    delta = %{
+      delta: delta |> :erlang.term_to_binary() |> Base.encode64(),
+      version: version,
+      inserted_at: inserted_at
+    }
+
+    delta = Jason.encode!(delta)
     version = Integer.to_string(version)
-    key = "chord:delta:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
 
     Mox.expect(Chord.Support.Mocks.Redis, :command, fn [
                                                          "ZADD",
@@ -78,10 +86,16 @@ defmodule Chord.Support.MocksHelpers.Redis do
       delta = opts[:delta]
       min_version = Integer.to_string(client_version + 1)
       max_version = "+inf"
-      delta = prepare_payload(:delta, delta, version, inserted_at)
-      delta = serialize_payload(:delta, delta)
 
-      key = "chord:delta:#{context_id}"
+      delta = %{
+        delta: delta |> :erlang.term_to_binary() |> Base.encode64(),
+        version: version,
+        inserted_at: inserted_at
+      }
+
+      delta = Jason.encode!(delta)
+
+      key = redis_key(@delta_prefix, context_id)
 
       Mox.expect(Chord.Support.Mocks.Redis, :command, fn [
                                                            "ZRANGEBYSCORE",
@@ -96,7 +110,7 @@ defmodule Chord.Support.MocksHelpers.Redis do
 
   def mock_del(opts) do
     context_id = opts[:context_id]
-    key = "chord:delta:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
 
     Mox.expect(Chord.Support.Mocks.Redis, :command, fn ["DEL", ^key] ->
       {:ok, 1}
@@ -106,7 +120,7 @@ defmodule Chord.Support.MocksHelpers.Redis do
   def mock_zremrangebyscore(opts) do
     context_id = opts[:context_id]
     older_than_time = "(#{opts[:older_than_time]}"
-    key = "chord:delta:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
 
     Mox.expect(Chord.Support.Mocks.Redis, :command, fn [
                                                          "ZREMRANGEBYSCORE",
@@ -121,7 +135,7 @@ defmodule Chord.Support.MocksHelpers.Redis do
   def mock_zcard(opts) do
     context_id = opts[:context_id]
     count = opts[:count]
-    key = "chord:delta:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
 
     Mox.expect(Chord.Support.Mocks.Redis, :command, fn ["ZCARD", ^key] ->
       {:ok, count}
@@ -131,7 +145,7 @@ defmodule Chord.Support.MocksHelpers.Redis do
   def mock_zremrangebyrank(opts) do
     context_id = opts[:context_id]
     rank_limit = opts[:rank_limit] |> Integer.to_string()
-    key = "chord:delta:#{context_id}"
+    key = redis_key(@delta_prefix, context_id)
 
     Mox.expect(Chord.Support.Mocks.Redis, :command, fn [
                                                          "ZREMRANGEBYRANK",
@@ -152,41 +166,5 @@ defmodule Chord.Support.MocksHelpers.Redis do
     end)
   end
 
-  defp prepare_payload(:context, data, version, inserted_at) do
-    %{
-      context: data,
-      version: version,
-      inserted_at: inserted_at
-    }
-  end
-
-  defp prepare_payload(:delta, data, version, inserted_at) do
-    %{
-      delta: data,
-      version: version,
-      inserted_at: inserted_at
-    }
-  end
-
-  defp serialize_payload(:context, payload) do
-    payload
-    |> Map.update!(:context, &term_to_binary/1)
-    |> to_redis_format(:context)
-  end
-
-  defp serialize_payload(:delta, payload) do
-    payload
-    |> Map.update!(:delta, &(&1 |> term_to_binary() |> Base.encode64()))
-    |> to_redis_format(:delta)
-  end
-
-  defp to_redis_format(payload, :context) do
-    Enum.flat_map(payload, fn {k, v} -> [Atom.to_string(k), v] end)
-  end
-
-  defp to_redis_format(payload, :delta) do
-    Jason.encode!(payload)
-  end
-
-  defp term_to_binary(term), do: :erlang.term_to_binary(term)
+  defp redis_key(prefix, context_id), do: "#{prefix}:#{context_id}"
 end

@@ -14,14 +14,14 @@ defmodule Chord.Backend.RedisTest do
     version = 1
     client_version = 0
 
-    context_response = %{
+    expected_context_response = %{
       context_id: context_id,
       context: context,
       version: version,
       inserted_at: current_time
     }
 
-    delta_response = %{
+    expected_delta_response = %{
       context_id: context_id,
       delta: delta,
       version: version,
@@ -35,8 +35,8 @@ defmodule Chord.Backend.RedisTest do
      version: version,
      delta: delta,
      client_version: client_version,
-     context_response: context_response,
-     delta_response: delta_response}
+     expected_context_response: expected_context_response,
+     expected_delta_response: expected_delta_response}
   end
 
   describe "Context Operations" do
@@ -45,12 +45,12 @@ defmodule Chord.Backend.RedisTest do
       context_id: context_id,
       context: context,
       version: version,
-      context_response: context_response
+      expected_context_response: expected_context_response
     } do
       mock_time(unit: :second, time: current_time)
       mock_hset(context_id: context_id)
-
-      assert Redis.set_context(context_id, context, version) == {:ok, context_response}
+      {:ok, result} = Redis.set_context(context_id, context, version)
+      assert result == expected_context_response
     end
 
     test "get_context", %{
@@ -58,7 +58,7 @@ defmodule Chord.Backend.RedisTest do
       context_id: context_id,
       context: context,
       version: version,
-      context_response: context_response
+      expected_context_response: expected_context_response
     } do
       mock_time(unit: :second, time: current_time)
       mock_hset(context_id: context_id)
@@ -70,8 +70,10 @@ defmodule Chord.Backend.RedisTest do
         inserted_at: current_time
       )
 
-      assert Redis.set_context(context_id, context, 1) == {:ok, context_response}
-      assert Redis.get_context(context_id) == {:ok, context_response}
+      {:ok, result_1} = Redis.set_context(context_id, context, version)
+      {:ok, result_2} = Redis.get_context(context_id)
+      assert result_1 == expected_context_response
+      assert result_2 == expected_context_response
     end
 
     test "returns :not_found for missing context", %{context_id: context_id} do
@@ -93,7 +95,7 @@ defmodule Chord.Backend.RedisTest do
       context_id: context_id,
       version: version,
       delta: delta,
-      delta_response: delta_response
+      expected_delta_response: expected_delta_response
     } do
       mock_time(unit: :second, time: current_time)
 
@@ -104,15 +106,17 @@ defmodule Chord.Backend.RedisTest do
         inserted_at: current_time
       )
 
-      assert Redis.set_delta(context_id, delta, version) == {:ok, delta_response}
+      {:ok, result} = Redis.set_delta(context_id, delta, version)
+      assert result == expected_delta_response
     end
 
     test "get_deltas for a context", %{
       current_time: current_time,
       context_id: context_id,
       delta: delta,
-      delta_response: delta_response,
-      version: version
+      expected_delta_response: expected_delta_response,
+      version: version,
+      client_version: client_version
     } do
       mock_time(unit: :second, time: current_time)
 
@@ -125,14 +129,16 @@ defmodule Chord.Backend.RedisTest do
 
       mock_zrangebyscore(
         context_id: context_id,
-        client_version: 0,
+        client_version: client_version,
         delta: delta,
         version: version,
         inserted_at: current_time
       )
 
-      assert Redis.set_delta(context_id, delta, 1) == {:ok, delta_response}
-      assert Redis.get_deltas(context_id, 0) == {:ok, [delta_response]}
+      {:ok, result_1} = Redis.set_delta(context_id, delta, version)
+      {:ok, [result_2]} = Redis.get_deltas(context_id, 0)
+      assert result_1 == expected_delta_response
+      assert result_2 == expected_delta_response
     end
 
     test "returns :not_found if no deltas exist" do
@@ -191,7 +197,7 @@ defmodule Chord.Backend.RedisTest do
         )
       end
 
-      assert {:ok, contexts} = Redis.list_contexts([])
+      {:ok, contexts} = Redis.list_contexts([])
       assert length(contexts) == 2
     end
 
@@ -215,7 +221,7 @@ defmodule Chord.Backend.RedisTest do
         )
       end
 
-      assert {:ok, deltas} = Redis.list_deltas([])
+      {:ok, deltas} = Redis.list_deltas([])
       assert length(deltas) == 2
     end
   end

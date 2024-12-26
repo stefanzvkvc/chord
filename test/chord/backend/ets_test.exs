@@ -8,18 +8,35 @@ defmodule Chord.Backend.ETSTest do
     # Ensure fresh ETS tables before each test
     :ets.new(:chord_context_table, [:named_table, :ordered_set, :public])
     :ets.new(:chord_context_history_table, [:named_table, :ordered_set, :public])
+
     current_time = 1_673_253_120
     context_id = "test-context"
     context = %{score: 0}
     delta = %{score: %{action: :added, value: 100}}
     version = 1
 
+    expected_context_result = %{
+      context_id: context_id,
+      context: context,
+      version: version,
+      inserted_at: current_time
+    }
+
+    expected_delta_result = %{
+      context_id: context_id,
+      delta: delta,
+      version: version,
+      inserted_at: current_time
+    }
+
     {:ok,
      current_time: current_time,
      context_id: context_id,
      context: context,
      version: version,
-     delta: delta}
+     delta: delta,
+     expected_context_result: expected_context_result,
+     expected_delta_result: expected_delta_result}
   end
 
   describe "Context operations" do
@@ -27,49 +44,48 @@ defmodule Chord.Backend.ETSTest do
       current_time: current_time,
       context_id: context_id,
       context: context,
-      version: version
+      version: version,
+      expected_context_result: expected_context_result
     } do
       mock_time(unit: :second, time: current_time)
       {:ok, result} = ETS.set_context(context_id, context, version)
-      assert result[:context_id] == context_id
-      assert result[:version] == version
-      assert result[:inserted_at] == current_time
-      assert result[:context] == context
+      assert result == expected_context_result
     end
 
     test "get_context", %{
       current_time: current_time,
       context_id: context_id,
       context: context,
-      version: version
+      version: version,
+      expected_context_result: expected_context_result
     } do
       mock_time(unit: :second, time: current_time)
       {:ok, result_1} = ETS.set_context(context_id, context, version)
       {:ok, result_2} = ETS.get_context(context_id)
-      assert result_2[:context_id] == result_1[:context_id]
-      assert result_2[:version] == result_1[:version]
-      assert result_2[:inserted_at] == result_1[:inserted_at]
-      assert result_2[:context] == result_1[:context]
+      assert result_1 == expected_context_result
+      assert result_2 == expected_context_result
     end
 
     test "context is not found", %{
       context_id: context_id
     } do
-      assert ETS.get_context(context_id) == {:error, :not_found}
+      assert {:error, :not_found} = ETS.get_context(context_id)
     end
 
     test "delete_context", %{
       current_time: current_time,
       context_id: context_id,
       context: context,
-      version: version
+      version: version,
+      expected_context_result: expected_context_result
     } do
       mock_time([unit: :second, time: current_time], 2)
 
-      {:ok, _context} = ETS.set_context(context_id, context, version)
+      {:ok, result} = ETS.set_context(context_id, context, version)
       :ok = ETS.delete_context(context_id)
 
-      assert ETS.get_context(context_id) == {:error, :not_found}
+      assert result == expected_context_result
+      assert {:error, :not_found} = ETS.get_context(context_id)
     end
   end
 
@@ -78,30 +94,27 @@ defmodule Chord.Backend.ETSTest do
       current_time: current_time,
       context_id: context_id,
       version: version,
-      delta: delta
+      delta: delta,
+      expected_delta_result: expected_delta_result
     } do
       mock_time(unit: :second, time: current_time)
 
       {:ok, result} = ETS.set_delta(context_id, delta, version)
-      assert result[:context_id] == context_id
-      assert result[:version] == version
-      assert result[:inserted_at] == current_time
-      assert result[:delta] == delta
+      assert result == expected_delta_result
     end
 
     test "get_deltas for a context", %{
       current_time: current_time,
       context_id: context_id,
       version: version,
-      delta: delta
+      delta: delta,
+      expected_delta_result: expected_delta_result
     } do
       mock_time(unit: :second, time: current_time)
       {:ok, result_1} = ETS.set_delta(context_id, delta, version)
       {:ok, [result_2]} = ETS.get_deltas(context_id, 0)
-      assert result_2[:context_id] == result_1[:context_id]
-      assert result_2[:version] == result_1[:version]
-      assert result_2[:inserted_at] == result_1[:inserted_at]
-      assert result_2[:delta] == result_1[:delta]
+      assert result_1 == expected_delta_result
+      assert result_2 == expected_delta_result
     end
 
     test "deltas not found for a context", %{context_id: context_id} do

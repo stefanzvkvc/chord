@@ -4,37 +4,42 @@ defmodule Chord.Utils.Context.MapTransform do
   """
 
   @doc """
-  Performs a deep merge of two maps.
-
-  Nested maps are merged recursively. Non-map values in `map2` overwrite values in `map1`.
+  Updates a deeply nested map using another map of updates.
 
   ## Parameters
-  - `map1`: The base map.
-  - `map2`: The map with updates or additional keys.
+  - `original` (map): The original map to be updated.
+  - `updates` (map): A map containing the updates to be applied.
+
+  ## Notes
+  - Preserves the structure of the original map while applying the updates.
+  - Creates missing keys in the original map if they are present in the updates.
 
   ## Examples
 
-      iex> map1 = %{a: %{b: %{c: 1}}, d: 4}
-      iex> map2 = %{a: %{b: %{c: 42, e: 99}}, d: 5, f: 10}
-      iex> Chord.Utils.Context.MapUtils.deep_merge(map1, map2)
-      %{a: %{b: %{c: 42, e: 99}}, d: 5, f: 10}
+      iex> alias Chord.Utils.Context.MapTransform
+      iex> original = %{users: %{user_a: %{name: "Alice", age: 30}, user_b: %{name: "Bob", age: 25}}}
+      iex> updates = %{users: %{user_b: %{age: 26}}}
+      iex> MapTransform.deep_update(original, updates)
+      %{users: %{user_a: %{name: "Alice", age: 30}, user_b: %{name: "Bob", age: 26}}}
 
-      iex> map1 = %{a: 1}
-      iex> map2 = %{a: %{b: 2}}
-      iex> Chord.Utils.Context.MapUtils.deep_merge(map1, map2)
-      %{a: %{b: 2}}
+      iex> original = %{}
+      iex> updates = %{users: %{user_a: %{profile: %{name: "Alice"}}}}
+      iex> MapTransform.deep_update(original, updates)
+      %{users: %{user_a: %{profile: %{name: "Alice"}}}}
   """
-  def deep_merge(map1, map2) when is_map(map1) and is_map(map2) do
-    Map.merge(map1, map2, fn _key, val1, val2 ->
-      if is_map(val1) and is_map(val2) do
-        deep_merge(val1, val2)
-      else
-        val2
-      end
-    end)
+  def deep_update(original, updates) when is_map(original) and is_map(updates) do
+    do_deep_update(original, updates)
   end
 
-  def deep_merge(_map1, _map2) do
-    raise ArgumentError, "deep_merge expects both arguments to be maps"
+  def deep_update(original, _updates), do: original
+
+  defp do_deep_update(original, updates) do
+    Map.merge(original, updates, fn _key, original_value, update_value ->
+      if is_map(original_value) and is_map(update_value) do
+        do_deep_update(original_value, update_value)
+      else
+        update_value
+      end
+    end)
   end
 end

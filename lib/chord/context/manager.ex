@@ -65,33 +65,20 @@ defmodule Chord.Context.Manager do
 
     %{context: old_context, version: old_version} = get_or_initialize_context(context_id)
 
-    Logger.debug(
-      "Old context for #{inspect(context_id)}: #{inspect(old_context)} with version #{inspect(old_version)}"
-    )
+    log_existing_context(context_id, old_context, old_version)
 
-    delta = Delta.calculate_delta(old_context, new_context)
+    case calculate_and_process_delta(context_id, old_context, old_version, new_context) do
+      {:ok, result} ->
+        Logger.info("Context for #{inspect(context_id)} updated successfully")
+        {:ok, result}
 
-    if delta == %{} do
-      Logger.info("No changes detected for context #{inspect(context_id)}. Skipping update.")
-      {:ok, %{context: old_context, delta: delta}}
-    else
-      new_version = old_version + 1
+      {:skip, result} ->
+        Logger.debug("No changes detected for context #{inspect(context_id)}. Skipping update.")
+        {:ok, result}
 
-      Logger.debug("Delta calculated: #{inspect(delta)}")
-
-      with {:ok, context} <- backend().set_context(context_id, new_context, new_version),
-           {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
-        Logger.info(
-          "Context for #{inspect(context_id)} set successfully with version #{inspect(new_version)}"
-        )
-
-        {:ok, %{context: context, delta: delta}}
-      else
-        error ->
-          Logger.error("Failed to set context for #{inspect(context_id)}: #{inspect(error)}")
-
-          error
-      end
+      {:error, reason} ->
+        Logger.error("Failed to set context for #{inspect(context_id)}: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
@@ -142,40 +129,29 @@ defmodule Chord.Context.Manager do
 
     case backend().get_context(context_id) do
       {:ok, %{context: old_context, version: old_version}} ->
-        Logger.debug("Old context for #{inspect(context_id)}: #{inspect(old_context)}")
+        log_existing_context(context_id, old_context, old_version)
 
-        updated_context = MapTransform.deep_merge(old_context, changes)
+        updated_context = MapTransform.deep_update(old_context, changes)
 
-        delta = Delta.calculate_delta(old_context, updated_context)
+        case calculate_and_process_delta(context_id, old_context, old_version, updated_context) do
+          {:ok, result} ->
+            Logger.info("Context for #{inspect(context_id)} updated successfully")
+            {:ok, result}
 
-        if delta == %{} do
-          Logger.info("No changes detected for context #{inspect(context_id)}. Skipping update.")
-          {:ok, %{context: old_context, delta: delta}}
-        else
-          new_version = old_version + 1
-          Logger.debug("Updated context: #{inspect(updated_context)}")
-          Logger.debug("Delta calculated: #{inspect(delta)}")
-
-          with {:ok, context} <- backend().set_context(context_id, updated_context, new_version),
-               {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
-            Logger.info(
-              "Context for #{inspect(context_id)} updated successfully with version #{inspect(new_version)}"
+          {:skip, result} ->
+            Logger.debug(
+              "No changes detected for context #{inspect(context_id)}. Skipping update."
             )
 
-            {:ok, %{context: context, delta: delta}}
-          else
-            error ->
-              Logger.error(
-                "Failed to update context for #{inspect(context_id)}: #{inspect(error)}"
-              )
+            {:ok, result}
 
-              error
-          end
+          {:error, reason} ->
+            Logger.error("Failed to set context for #{inspect(context_id)}: #{inspect(reason)}")
+            {:error, reason}
         end
 
       {:error, _error} = error ->
         Logger.error("Failed to update context for #{inspect(context_id)}: #{inspect(error)}")
-
         error
     end
   end
@@ -336,6 +312,28 @@ defmodule Chord.Context.Manager do
     end
   end
 
+  defp calculate_and_process_delta(context_id, old_context, old_version, new_context) do
+    delta = Delta.calculate_delta(old_context, new_context)
+
+    if delta == %{} do
+      {:skip, %{context: old_context, delta: delta}}
+    else
+      process_update(context_id, new_context, old_version, delta)
+    end
+  end
+
+  defp process_update(context_id, new_context, old_version, delta) do
+    new_version = old_version + 1
+    Logger.debug("Delta calculated: #{inspect(delta)}")
+
+    with {:ok, context} <- backend().set_context(context_id, new_context, new_version),
+         {:ok, delta} <- backend().set_delta(context_id, delta, new_version) do
+      {:ok, %{context: context, delta: delta}}
+    else
+      error -> {:error, error}
+    end
+  end
+
   defp get_context_from_external_storage(context_id) do
     context_external_provider = context_external_provider()
 
@@ -363,6 +361,14 @@ defmodule Chord.Context.Manager do
     else
       {:error, :no_export_callback}
     end
+  end
+
+  defp log_existing_context(context_id, old_context, old_version) do
+    Logger.debug("""
+    Old context for #{inspect(context_id)}:
+    Context: #{inspect(old_context)}
+    Version: #{inspect(old_version)}
+    """)
   end
 
   # Configuration
