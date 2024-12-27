@@ -1,39 +1,56 @@
 defmodule Chord.Utils.Redis.Client do
   @moduledoc """
-  Wrapper around Redix to abstract Redis commands and enable easier mocking in tests.
+  Wrapper around Redis commands to abstract interaction and enable easier testing.
   """
-  require Logger
-  @behaviour Chord.Utils.Redis.Behaviour
 
-  @impl true
+  require Logger
+
+  @doc """
+  Executes a Redis command.
+
+  Depending on the configuration, this function will:
+  - Interact with the named Redix process (using `Process.whereis/1`).
+  - Use a mock module for testing.
+
+  ## Parameters
+    - `command` (list): The Redis command to execute.
+
+  ## Returns
+    - `{:ok, result}` on success.
+    - `{:error, reason}` on failure.
+  """
   def command(command) do
     case redis_connection() do
       pid when is_pid(pid) ->
-        case Redix.command(pid, command) do
-          {:ok, result} ->
-            {:ok, result}
-
-          {:error, reason} ->
-            Logger.error("Redis command failed: #{inspect(reason)}")
-            {:error, reason}
-        end
+        execute_redis_command(pid, command)
 
       module when is_atom(module) ->
-        # Call the mock's implementation
         module.command(command)
+
+      nil ->
+        {:error, :process_not_found}
+    end
+  end
+
+  defp execute_redis_command(pid, command) do
+    case Redix.command(pid, command) do
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, reason} ->
+        Logger.error("Redis command failed: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
   defp redis_connection() do
     case Application.get_env(:chord, :redis_client) do
-      pid when is_pid(pid) ->
-        pid
+      name when is_atom(name) ->
+        Process.whereis(name) || name
 
-      module when is_atom(module) ->
-        module
-
-      nil ->
-        raise "Redis client is not configured. Please set :redis_client in the application environment."
+      other ->
+        Logger.warn("Invalid redis_client configuration: #{inspect(other)}")
+        nil
     end
   end
 end

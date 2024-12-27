@@ -2,7 +2,6 @@ defmodule Chord.Cleanup.ServerTest do
   use ExUnit.Case, async: true
   import Chord.Support.MocksHelpers.Backend
   import Chord.Support.MocksHelpers.Time
-  import TestHelpers
   alias Chord.Cleanup.Server
 
   setup do
@@ -12,33 +11,12 @@ defmodule Chord.Cleanup.ServerTest do
     Application.put_env(:chord, :context_auto_delete, false)
     Application.put_env(:chord, :delta_ttl, :timer.hours(3))
 
-    on_exit(fn ->
-      case Process.whereis(Server) do
-        nil -> :ok
-        pid -> GenServer.stop(pid, :normal)
-      end
-    end)
-
     {:ok, current_time: 1_673_253_120}
-  end
-
-  describe "Initialization and Shutdown" do
-    test "server initializes and runs" do
-      {:ok, pid} = Server.start_link(interval: 200, backend_opts: [])
-      assert Process.alive?(pid)
-      GenServer.stop(pid)
-    end
-
-    test "server shuts down gracefully" do
-      {:ok, pid} = Server.start_link(interval: 200, backend_opts: [])
-      assert Process.alive?(pid)
-      GenServer.stop(pid)
-      refute Process.alive?(pid)
-    end
   end
 
   describe "Periodic Cleanup Execution" do
     test "triggers periodic cleanup", %{current_time: current_time} do
+      unique_name = get_process_name()
       context_id = "game:1"
       context_ttl = Application.get_env(:chord, :context_ttl)
       delta_ttl = Application.get_env(:chord, :delta_ttl)
@@ -52,53 +30,66 @@ defmodule Chord.Cleanup.ServerTest do
       mock_delete_deltas_by_time(context_id: context_id, older_than_time: delta_threshold)
       mock_list_contexts_with_delta_counts([])
 
-      {:ok, pid} = Server.start_link(interval: 200, backend_opts: [])
+      {:ok, pid} = Server.start_link(name: unique_name, interval: 200, backend_opts: [])
       Mox.allow(Chord.Support.Mocks.Time, self(), pid)
       Mox.allow(Chord.Support.Mocks.Backend, self(), pid)
 
       Process.sleep(300)
       assert Process.alive?(pid)
+      GenServer.stop(pid)
     end
   end
 
   describe "Backend Configuration" do
     test "uses backend_opts for periodic cleanup", %{current_time: current_time} do
+      unique_name = get_process_name()
       mock_time(unit: :second, time: current_time)
       mock_list_contexts(limit: 10)
       mock_list_deltas(limit: 10)
       mock_list_contexts_with_delta_counts([])
 
-      {:ok, pid} = Server.start_link(interval: 200, backend_opts: [limit: 10])
+      {:ok, pid} = Server.start_link(name: unique_name, interval: 200, backend_opts: [limit: 10])
       Mox.allow(Chord.Support.Mocks.Time, self(), pid)
       Mox.allow(Chord.Support.Mocks.Backend, self(), pid)
 
       Process.sleep(300)
       assert Process.alive?(pid)
+      GenServer.stop(pid)
     end
   end
 
   describe "Dynamic Updates" do
     test "updates interval dynamically" do
-      {:ok, pid} = Server.start_link(interval: 200, backend_opts: [])
-      assert Server.update_interval(300) == :ok
+      unique_name = get_process_name()
+      {:ok, pid} = Server.start_link(name: unique_name, interval: 200, backend_opts: [])
+      assert Server.update_interval(1000, unique_name) == :ok
       state = :sys.get_state(pid)
-      assert state.interval == 300
+      assert state.interval == 1000
+      GenServer.stop(pid)
     end
 
     test "updates backend options dynamically" do
-      {:ok, pid} = Server.start_link(interval: 200, backend_opts: [limit: 10])
-      assert Server.update_backend_opts(limit: 20) == :ok
+      unique_name = get_process_name()
+      {:ok, pid} = Server.start_link(name: unique_name, interval: 200, backend_opts: [limit: 10])
+      assert Server.update_backend_opts([limit: 20], unique_name) == :ok
       state = :sys.get_state(pid)
       assert state.backend_opts == [limit: 20]
+      GenServer.stop(pid)
     end
   end
 
   describe "Robustness" do
     test "handles unexpected messages" do
-      {:ok, pid} = Server.start_link(interval: 200, backend_opts: [])
+      unique_name = get_process_name()
+      {:ok, pid} = Server.start_link(name: unique_name, interval: 200, backend_opts: [])
       send(pid, :unexpected_message)
       Process.sleep(50)
       assert Process.alive?(pid)
+      GenServer.stop(pid)
     end
+  end
+
+  defp get_process_name() do
+    :"cleanup_server_#{:erlang.unique_integer()}"
   end
 end

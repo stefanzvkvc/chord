@@ -37,14 +37,11 @@ defmodule Chord.Context.ManagerTest do
         inserted_at: current_time
       )
 
-      assert Manager.get_context(context_id) ==
-               {:ok,
-                %{
-                  context_id: context_id,
-                  context: old_context,
-                  version: 1,
-                  inserted_at: current_time
-                }}
+      expected_result =
+        {:ok,
+         %{context_id: context_id, context: old_context, version: 1, inserted_at: current_time}}
+
+      assert Manager.get_context(context_id) == expected_result
     end
 
     test "calculates delta and updates context", %{
@@ -69,30 +66,22 @@ defmodule Chord.Context.ManagerTest do
         inserted_at: current_time
       )
 
-      mock_set_delta(
-        context_id: context_id,
-        delta: delta,
-        version: 2,
-        inserted_at: current_time
-      )
+      mock_set_delta(context_id: context_id, delta: delta, version: 2, inserted_at: current_time)
 
-      assert Manager.set_context(context_id, new_context) == {
-               :ok,
-               %{
-                 context: %{
-                   context_id: context_id,
-                   context: new_context,
-                   version: 2,
-                   inserted_at: current_time
-                 },
-                 delta: %{
-                   context_id: context_id,
-                   delta: delta,
-                   version: 2,
-                   inserted_at: current_time
-                 }
-               }
-             }
+      expected_result = {
+        :ok,
+        %{
+          context: %{
+            context_id: context_id,
+            context: new_context,
+            version: 2,
+            inserted_at: current_time
+          },
+          delta: %{context_id: context_id, delta: delta, version: 2, inserted_at: current_time}
+        }
+      }
+
+      assert Manager.set_context(context_id, new_context) == expected_result
     end
 
     test "partially updates the context", %{
@@ -118,31 +107,38 @@ defmodule Chord.Context.ManagerTest do
         inserted_at: current_time
       )
 
-      mock_set_delta(
+      mock_set_delta(context_id: context_id, delta: delta, version: 2, inserted_at: current_time)
+
+      expected_result = {
+        :ok,
+        %{
+          context: %{
+            context_id: context_id,
+            context: updated_context,
+            version: 2,
+            inserted_at: current_time
+          },
+          delta: %{context_id: context_id, delta: delta, version: 2, inserted_at: current_time}
+        }
+      }
+
+      assert Manager.update_context(context_id, partial_update) == expected_result
+    end
+
+    test "skipping update when there is no change", %{
+      context_id: context_id,
+      old_context: old_context,
+      current_time: current_time
+    } do
+      mock_get_context(
         context_id: context_id,
-        delta: delta,
-        version: 2,
+        context: old_context,
+        version: 1,
         inserted_at: current_time
       )
 
-      assert Manager.update_context(context_id, partial_update) ==
-               {
-                 :ok,
-                 %{
-                   context: %{
-                     context_id: context_id,
-                     context: updated_context,
-                     version: 2,
-                     inserted_at: current_time
-                   },
-                   delta: %{
-                     context_id: context_id,
-                     delta: delta,
-                     version: 2,
-                     inserted_at: current_time
-                   }
-                 }
-               }
+      expected_result = {:ok, %{context: old_context, delta: %{}}}
+      assert Manager.set_context(context_id, old_context) == expected_result
     end
   end
 
@@ -159,14 +155,11 @@ defmodule Chord.Context.ManagerTest do
         inserted_at: current_time
       )
 
-      assert Manager.sync_context(context_id, nil) ==
-               {:full_context,
-                %{
-                  context_id: context_id,
-                  context: old_context,
-                  version: 1,
-                  inserted_at: current_time
-                }}
+      expected_result =
+        {:full_context,
+         %{context_id: context_id, context: old_context, version: 1, inserted_at: current_time}}
+
+      assert Manager.sync_context(context_id, nil) == expected_result
     end
 
     test "returns no_change if client version matches", %{
@@ -181,7 +174,8 @@ defmodule Chord.Context.ManagerTest do
         inserted_at: current_time
       )
 
-      assert Manager.sync_context(context_id, 1) == {:no_change, 1}
+      expected_result = {:no_change, 1}
+      assert Manager.sync_context(context_id, 1) == expected_result
     end
 
     test "returns delta for valid client version", %{
@@ -200,18 +194,12 @@ defmodule Chord.Context.ManagerTest do
         inserted_at: current_time
       )
 
-      mock_get_deltas(
-        context_id: context_id,
-        delta: delta,
-        version: 1,
-        inserted_at: current_time
-      )
+      mock_get_deltas(context_id: context_id, delta: delta, version: 1, inserted_at: current_time)
 
-      assert Manager.sync_context(context_id, client_version) ==
-               {
-                 :delta,
-                 %{context_id: context_id, delta: delta, version: 2, inserted_at: current_time}
-               }
+      expected_result =
+        {:delta, %{context_id: context_id, delta: delta, version: 2, inserted_at: current_time}}
+
+      assert Manager.sync_context(context_id, client_version) == expected_result
     end
 
     test "returns full context if no deltas exist", %{
@@ -226,20 +214,13 @@ defmodule Chord.Context.ManagerTest do
         inserted_at: current_time
       )
 
-      mock_get_deltas(
-        context_id: context_id,
-        version: 0,
-        error: {:error, :not_found}
-      )
+      mock_get_deltas(context_id: context_id, version: 0, error: {:error, :not_found})
 
-      assert Manager.sync_context(context_id, 0) ==
-               {:full_context,
-                %{
-                  context_id: context_id,
-                  context: old_context,
-                  version: 1,
-                  inserted_at: current_time
-                }}
+      expected_result =
+        {:full_context,
+         %{context_id: context_id, context: old_context, version: 1, inserted_at: current_time}}
+
+      assert Manager.sync_context(context_id, 0) == expected_result
     end
   end
 
@@ -292,6 +273,55 @@ defmodule Chord.Context.ManagerTest do
       Application.delete_env(:chord, :export_callback)
       mock_get_context(context_id: context_id, context: old_context, version: 1)
       assert Manager.export_context(context_id) == {:error, :no_export_callback}
+    end
+  end
+
+  describe "Restore Context" do
+    test "successfully restores a context from external storage", %{
+      context_id: context_id,
+      old_context: old_context,
+      current_time: current_time
+    } do
+      Application.put_env(:chord, :context_external_provider, fn context_id ->
+        {:ok,
+         %{
+           context_id: context_id,
+           context: old_context,
+           version: 1,
+           inserted_at: current_time
+         }}
+      end)
+
+      mock_set_context(
+        context_id: context_id,
+        context: old_context,
+        version: 1,
+        inserted_at: current_time
+      )
+
+      expected_result =
+        {:ok,
+         %{context_id: context_id, context: old_context, version: 1, inserted_at: current_time}}
+
+      assert Manager.restore_context(context_id) == expected_result
+    end
+
+    test "handles missing context in external storage", %{context_id: context_id} do
+      Application.put_env(:chord, :context_external_provider, fn context_id ->
+        {:error, :not_found}
+      end)
+
+      expected_result = {:error, :not_found}
+      assert Manager.restore_context(context_id) == expected_result
+    end
+
+    test "handles missing context external provider callback gracefully", %{
+      context_id: context_id,
+      old_context: old_context
+    } do
+      Application.delete_env(:chord, :context_external_provider)
+      expected_result = {:error, :no_context_external_provider}
+      assert Manager.restore_context(context_id) == expected_result
     end
   end
 end

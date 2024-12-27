@@ -42,12 +42,14 @@ defmodule Chord.Cleanup.Server do
 
   ## Parameters
     - `new_interval` (integer): The new interval in milliseconds.
+    - `name` (atom): The name of the `GenServer` instance. Defaults to `__MODULE__`.
+
 
   ## Returns
     - `:ok` if the interval was successfully updated.
   """
-  def update_interval(new_interval) do
-    GenServer.call(__MODULE__, {:update_interval, new_interval})
+  def update_interval(new_interval, name \\ __MODULE__) do
+    GenServer.call(name, {:update_interval, new_interval})
   end
 
   @doc """
@@ -55,12 +57,14 @@ defmodule Chord.Cleanup.Server do
 
   ## Parameters
     - `new_opts` (Keyword.t): The new backend options.
+    - `name` (atom): The name of the `GenServer` instance. Defaults to `__MODULE__`.
+
 
   ## Returns
     - `:ok` if the backend options were successfully updated.
   """
-  def update_backend_opts(new_opts) do
-    GenServer.call(__MODULE__, {:update_backend_opts, new_opts})
+  def update_backend_opts(new_opts, name \\ __MODULE__) do
+    GenServer.call(name, {:update_backend_opts, new_opts})
   end
 
   @impl true
