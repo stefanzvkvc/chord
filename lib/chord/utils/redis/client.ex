@@ -49,7 +49,7 @@ defmodule Chord.Utils.Redis.Client do
         Process.whereis(name) || name
 
       other ->
-        Logger.warn("Invalid redis_client configuration: #{inspect(other)}")
+        Logger.warning("Invalid redis_client configuration: #{inspect(other)}")
         nil
     end
   end

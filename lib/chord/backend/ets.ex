@@ -23,6 +23,12 @@ defmodule Chord.Backend.ETS do
     ensure_table_exists()
 
     inserted_at = time_provider().current_time(:second)
+
+    # Delete all existing records with the same context_id
+    match_spec = [{{{context_id, :_}, :_, :_}, [], [true]}]
+    :ets.select_delete(@context_table, match_spec)
+
+    # Insert the new record
     :ets.insert(@context_table, {{context_id, inserted_at}, context, version})
     {:ok, %{context_id: context_id, context: context, version: version, inserted_at: inserted_at}}
   end

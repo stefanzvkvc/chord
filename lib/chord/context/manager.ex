@@ -296,9 +296,21 @@ defmodule Chord.Context.Manager do
 
   defp sync_deltas_or_fallback(context_id, context, client_version) do
     case backend().get_deltas(context_id, client_version) do
-      {:ok, delta} ->
-        delta = Delta.merge_deltas(delta)
-        {:delta, delta}
+      {:ok, deltas} ->
+        # Extract the delta maps from the list of deltas
+        merged_delta = deltas |> Enum.map(& &1.delta) |> Delta.merge_deltas()
+
+        # Determine the version and inserted_at
+        version = Enum.max_by(deltas, & &1.version).version
+        inserted_at = Enum.max_by(deltas, & &1.inserted_at).inserted_at
+
+        {:delta,
+         %{
+           context_id: context_id,
+           delta: merged_delta,
+           version: version,
+           inserted_at: inserted_at
+         }}
 
       _ ->
         {:full_context, context}

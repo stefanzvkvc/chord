@@ -40,32 +40,41 @@ defmodule Chord.Delta do
       }
   """
   @spec calculate_delta(current_context :: map(), new_context :: map()) :: map()
-  def calculate_delta(current_context, new_context) do
-    # Normalize maps
-    current_context = Map.new(current_context)
-    new_context = Map.new(new_context)
+  def calculate_delta(current_context, new_context)
+      when is_map(current_context) and is_map(new_context) do
+    if current_context == new_context do
+      %{}
+    else
+      # Detect added and modified keys
+      added_or_modified =
+        Enum.reduce(new_context, %{}, fn {key, new_value}, acc ->
+          case Map.get(current_context, key) do
+            nil ->
+              Map.put(acc, key, %{action: :added, value: new_value})
 
-    # Detect added and modified keys
-    added_or_modified =
-      new_context
-      |> Enum.reduce(%{}, fn {key, new_value}, acc ->
-        case Map.get(current_context, key) do
-          nil -> Map.put(acc, key, %{action: :added, value: new_value})
-          old_value when old_value != new_value ->
-            Map.put(acc, key, %{action: :modified, old_value: old_value, value: new_value})
-          _ -> acc
-        end
-      end)
+            old_value when old_value != new_value ->
+              Map.put(acc, key, %{
+                action: :modified,
+                old_value: old_value,
+                value: new_value
+              })
 
-    # Detect removed keys
-    removed =
-      current_context
-      |> Enum.reduce(%{}, fn {key, _value}, acc ->
-        if Map.has_key?(new_context, key), do: acc, else: Map.put(acc, key, %{action: :removed})
-      end)
+            _ ->
+              acc
+          end
+        end)
 
-    # Combine results
-    Map.merge(added_or_modified, removed)
+      # Detect removed keys
+      removed =
+        Enum.reduce(current_context, %{}, fn {key, _value}, acc ->
+          if Map.has_key?(new_context, key),
+            do: acc,
+            else: Map.put(acc, key, %{action: :removed})
+        end)
+
+      # Combine results
+      Map.merge(added_or_modified, removed)
+    end
   end
 
   @doc """
@@ -98,10 +107,14 @@ defmodule Chord.Delta do
     Enum.reduce(delta_list, %{}, fn delta, acc ->
       Map.merge(acc, delta, fn _key, v1, v2 ->
         cond do
-          v1.action == :removed or v2.action == :removed -> %{action: :removed}
+          v1.action == :removed or v2.action == :removed ->
+            %{action: :removed}
+
           v1.action == :modified and v2.action == :modified ->
             %{action: :modified, old_value: v1.old_value, value: v2.value}
-          true -> v2
+
+          true ->
+            v2
         end
       end)
     end)

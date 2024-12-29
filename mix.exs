@@ -24,7 +24,8 @@ defmodule Chord.MixProject do
     [
       {:redix, "~> 1.5"},
       {:jason, "~> 1.4"},
-      {:mox, "~> 1.0", only: :test}
+      {:mox, "~> 1.0", only: :test},
+      {:benchee, "~> 1.0", only: :dev}
     ]
   end
 
