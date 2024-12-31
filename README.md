@@ -132,8 +132,69 @@ Customize how deltas are structured by implementing the `Chord.Delta.Formatter` 
 
 ---
 
-## 📚 Documentation
-TODO
+## 🕰 Benchmark Results
+
+Chord has been benchmarked using Redis and ETS backends under both stateless and stateful architectures. Below are the results for various scenarios:
+
+### Redis Benchmark Results
+
+#### With Input Data
+
+| Scenario                                             | IPS    | Avg. Time | Deviation | Median Time | 99th Percentile |
+|------------------------------------------------------|--------|-----------|-----------|-------------|-----------------|
+| Stateless - Single Context (50 participants)         | 62.79  | 15.93 ms  | ±18.03%   | 15.88 ms    | 22.99 ms        |
+| Stateful - Single Context (50 participants)          | 7.69   | 130.07 ms | ±51.34%   | 102.08 ms   | 270.40 ms       |
+| Stateless - Multiple Contexts (100 contexts)         | 2.08   | 481.38 ms | ±3.48%    | 474.73 ms   | 511.20 ms       |
+| Stateful - Multiple Contexts (100 contexts)          | 1.85   | 541.19 ms | ±3.51%    | 541.24 ms   | 566.32 ms       |
+
+**Comparison:**
+- Stateless - Single Context: 62.79x faster than Stateful - Multiple Contexts.
+
+### ETS Benchmark Results
+
+#### With Input Data
+
+| Scenario                                             | IPS    | Avg. Time | Deviation | Median Time | 99th Percentile |
+|------------------------------------------------------|--------|-----------|-----------|-------------|-----------------|
+| Stateless - Single Context (50 participants)         | 151.19 | 6.61 ms   | ±20.47%   | 6.46 ms     | 14.43 ms        |
+| Stateful - Single Context (50 participants)          | 29.56  | 33.82 ms  | ±13.06%   | 36.05 ms    | 45.56 ms        |
+| Stateless - Multiple Contexts (100 contexts)         | 3.51   | 284.85 ms | ±14.28%   | 279.17 ms   | 405.34 ms       |
+| Stateful - Multiple Contexts (100 contexts)          | 3.73   | 268.05 ms | ±23.67%   | 237.10 ms   | 374.59 ms       |
+
+**Comparison:**
+- Stateless - Single Context: 43.07x faster than Stateful - Multiple Contexts.
+
+### Device Information
+
+| Property                   | Value                    |
+|----------------------------|--------------------------|
+| **Operating System**       | macOS                    | 
+| **CPU Information**        | Apple M4 Pro             |
+| **Number of Cores**        | 12                       |
+| **Available Memory**       | 24 GB                    |
+| **Elixir Version**         | 1.17.3                   |
+| **Erlang Version**         | 27.1.2                   |
+| **JIT Enabled**            | True                     |
+
+**Benchmark Suite Configuration:**
+- **Warmup:** 2 seconds
+- **Execution Time:** 5 seconds
+- **Parallel:** 1
+- **Inputs:** Data
+
+---
+
+## 🧰 Contributing
+
+Contributions from the community are welcome to make Chord even better! Whether it's fixing bugs, improving documentation, or adding new features, your help is greatly appreciated.
+
+### How to Contribute
+1. Fork the repository.
+2. Create a new branch for your changes.
+3. Make your changes and test them thoroughly.
+4. Submit a pull request with a clear description of your changes.
+
+Feel free to open issues for discussion or if you need help. Together, we can build something amazing!
 
 ---
 
