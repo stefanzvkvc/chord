@@ -52,6 +52,15 @@ defmodule Chord.Delta do
             nil ->
               Map.put(acc, key, %{action: :added, value: new_value})
 
+            old_value when is_map(old_value) and is_map(new_value) ->
+              nested_delta = calculate_delta(old_value, new_value)
+
+              if nested_delta == %{} do
+                acc
+              else
+                Map.put(acc, key, nested_delta)
+              end
+
             old_value when old_value != new_value ->
               Map.put(acc, key, %{
                 action: :modified,
@@ -67,9 +76,10 @@ defmodule Chord.Delta do
       # Detect removed keys
       removed =
         Enum.reduce(current_context, %{}, fn {key, _value}, acc ->
-          if Map.has_key?(new_context, key),
-            do: acc,
-            else: Map.put(acc, key, %{action: :removed})
+          case Map.has_key?(new_context, key) do
+            true -> acc
+            false -> Map.put(acc, key, %{action: :removed})
+          end
         end)
 
       # Combine results

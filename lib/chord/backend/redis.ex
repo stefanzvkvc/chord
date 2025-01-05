@@ -5,11 +5,19 @@ defmodule Chord.Backend.Redis do
 
   ## Configuration
 
-  Configure the Redis connection in your application:
+  To use Redis as a backend, follow these steps:
 
-      config :chord, :redis,
-        url: "redis://localhost:6379",
-        pool_size: 5
+  1. Start a Redis connection process using `Redix` with your desired configuration:
+
+    ```elixir
+    {:ok, _} = Redix.start_link("redis://localhost:6379", name: :my_redis)
+    ```
+
+  2. Set the Redis client in the application environment:
+
+    ```elixir
+    Application.put_env(:chord, :redis_client, :my_redis)
+    ```
   """
 
   @behaviour Chord.Backend.Behaviour
