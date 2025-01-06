@@ -117,11 +117,14 @@ defmodule Chord.Delta do
     Enum.reduce(delta_list, %{}, fn delta, acc ->
       Map.merge(acc, delta, fn _key, v1, v2 ->
         cond do
-          v1.action == :removed or v2.action == :removed ->
+          v1[:action] == :removed or v2[:action] == :removed ->
             %{action: :removed}
 
-          v1.action == :modified and v2.action == :modified ->
+          v1[:action] == :modified and v2[:action] == :modified ->
             %{action: :modified, old_value: v1.old_value, value: v2.value}
+
+          is_map(v1) and is_map(v2) ->
+            merge_deltas([v1, v2])
 
           true ->
             v2
