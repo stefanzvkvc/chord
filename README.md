@@ -23,7 +23,7 @@ Add Chord to your Mix dependencies:
 ```elixir
 def deps do
   [
-    {:chord, "~> 0.1.0"}
+    {:chord, "~> 0.1.3"}
   ]
 end
 ```
