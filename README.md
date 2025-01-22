@@ -1,6 +1,6 @@
 # Chord
 
-![Chord Logo](https://raw.githubusercontent.com/stefanzvkvc/chord/main/assets/logo.png)
+![Chord Logo](https://raw.githubusercontent.com/stefanzvkvc/chord/main/assets/chord.png)
 
 Welcome to **Chord** - a flexible and powerful Elixir library designed to simplify context management and delta tracking in your distributed or real-time applications.
 
