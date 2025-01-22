@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.4] - 2025-01-22
+### Added
+- Enhanced `README.md` with detailed examples for using the Chord library.
+- Unit tests for `calculate_delta` to handle `nil` values and ensure proper behavior when handling nested maps.
+- Project logo
+
+### Changed
+- Updated `delta_ttl` configuration to use seconds for consistency across the library.
+- Improved `calculate_delta` function to:
+  - Handle `nil` values appropriately.
+  - Mark changes as `:modified` when the old value is `nil`.
+
+### Fixed
+- Bug in Redis backend:
+  - `fetch_delta_counts/1` now correctly splits keys using `String.split/3` with `parts: 3` to handle keys with more than two colons.
+
 ## [0.1.3] - 2025-01-06
 ### Fixed
 - Updated README.md to include missing details.

@@ -7,25 +7,51 @@ defmodule Chord.DeltaTest do
     test "calculates added keys" do
       current_context = %{name: "Alice"}
       new_context = %{name: "Alice", age: 30}
+      expected_delta = %{age: %{action: :added, value: 30}}
 
-      delta = Delta.calculate_delta(current_context, new_context)
-      assert delta == %{age: %{action: :added, value: 30}}
+      assert Delta.calculate_delta(current_context, new_context) == expected_delta
     end
 
     test "calculates removed keys" do
       current_context = %{name: "Alice", age: 30}
       new_context = %{name: "Alice"}
+      expected_delta = %{age: %{action: :removed}}
 
-      delta = Delta.calculate_delta(current_context, new_context)
-      assert delta == %{age: %{action: :removed}}
+      assert Delta.calculate_delta(current_context, new_context) == expected_delta
     end
 
     test "calculates modified keys" do
       current_context = %{name: "Alice", status: "online"}
       new_context = %{name: "Alice", status: "offline"}
+      expected_delta = %{status: %{action: :modified, old_value: "online", value: "offline"}}
 
-      delta = Delta.calculate_delta(current_context, new_context)
-      assert delta == %{status: %{action: :modified, old_value: "online", value: "offline"}}
+      assert Delta.calculate_delta(current_context, new_context) == expected_delta
+    end
+
+    test "handles nil values correctly" do
+      current_context = %{name: "Alice", status: nil}
+      new_context = %{name: "Alice", status: "online"}
+      expected_delta = %{status: %{action: :modified, old_value: nil, value: "online"}}
+
+      assert Delta.calculate_delta(current_context, new_context) == expected_delta
+    end
+
+    test "handles nested maps" do
+      current_context = %{
+        users: %{"Alice" => %{status: "offline", age: 30}, "Bob" => %{status: "online", age: 30}}
+      }
+
+      new_context = %{
+        users: %{"Alice" => %{status: "online", age: 30}, "Bob" => %{status: "online", age: 30}}
+      }
+
+      expected_delta = %{
+        users: %{
+          "Alice" => %{status: %{action: :modified, old_value: "offline", value: "online"}}
+        }
+      }
+
+      assert Delta.calculate_delta(current_context, new_context) == expected_delta
     end
   end
 
@@ -34,20 +60,58 @@ defmodule Chord.DeltaTest do
       delta1 = %{name: %{action: :added, value: "Alice"}}
       delta2 = %{status: %{action: :added, value: "online"}}
 
-      merged = Delta.merge_deltas([delta1, delta2])
+      expected_delta = %{
+        name: %{action: :added, value: "Alice"},
+        status: %{action: :added, value: "online"}
+      }
 
-      assert merged == %{
-               name: %{action: :added, value: "Alice"},
-               status: %{action: :added, value: "online"}
-             }
+      assert Delta.merge_deltas([delta1, delta2]) == expected_delta
     end
 
     test "handles removed keys" do
       delta1 = %{name: %{action: :added, value: "Alice"}}
       delta2 = %{name: %{action: :removed}}
+      expected_delta = %{name: %{action: :removed}}
 
-      merged = Delta.merge_deltas([delta1, delta2])
-      assert merged == %{name: %{action: :removed}}
+      assert Delta.merge_deltas([delta1, delta2]) == expected_delta
+    end
+
+    test "handles nested deltas" do
+      delta1 = %{
+        users: %{
+          "Alice" => %{status: %{action: :modified, old_value: "offline", value: "online"}}
+        }
+      }
+
+      delta2 = %{
+        users: %{
+          "Alice" => %{avatar: %{action: :added, value: "avatar_url"}}
+        }
+      }
+
+      delta3 = %{
+        users: %{
+          "Alice" => %{about: %{action: :modified, old_value: nil, value: "Alice In Wonderland"}}
+        }
+      }
+
+      delta4 = %{
+        users: %{
+          "Alice" => %{avatar: %{action: :removed}}
+        }
+      }
+
+      expected_delta = %{
+        users: %{
+          "Alice" => %{
+            status: %{value: "online", action: :modified, old_value: "offline"},
+            avatar: %{action: :removed},
+            about: %{value: "Alice In Wonderland", action: :modified, old_value: nil}
+          }
+        }
+      }
+
+      assert Delta.merge_deltas([delta1, delta2, delta3, delta4]) == expected_delta
     end
   end
 

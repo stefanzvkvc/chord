@@ -26,7 +26,7 @@ defmodule Chord.Cleanup do
   @default_time_provider Chord.Utils.Time
   @default_context_auto_delete false
   @default_context_ttl nil
-  @default_delta_ttl :timer.hours(24)
+  @default_delta_ttl 24 * 60 * 60
   @default_delta_threshold 100
 
   @doc """
@@ -97,7 +97,7 @@ defmodule Chord.Cleanup do
   end
 
   defp cleanup_deltas_by_time(current_time, opts) do
-    delta_ttl = Application.get_env(:chord, :delta_ttl, @default_delta_ttl)
+    delta_ttl = delta_ttl()
 
     if delta_ttl do
       Logger.info("Cleaning up deltas older than #{delta_ttl} seconds")
@@ -129,7 +129,7 @@ defmodule Chord.Cleanup do
   end
 
   defp cleanup_deltas_by_threshold(opts) do
-    delta_threshold = Application.get_env(:chord, :delta_threshold, @default_delta_threshold)
+    delta_threshold = delta_threshold()
 
     if delta_threshold do
       Logger.info("Cleaning up deltas exceeding the threshold of #{delta_threshold}")
@@ -173,7 +173,18 @@ defmodule Chord.Cleanup do
     Application.get_env(:chord, :context_auto_delete, @default_context_auto_delete)
   end
 
+  @doc false
   defp context_ttl() do
     Application.get_env(:chord, :context_ttl, @default_context_ttl)
+  end
+
+  @doc false
+  defp delta_ttl() do
+    Application.get_env(:chord, :delta_ttl, @default_delta_ttl)
+  end
+
+  @doc false
+  defp delta_threshold() do
+    Application.get_env(:chord, :delta_threshold, @default_delta_threshold)
   end
 end

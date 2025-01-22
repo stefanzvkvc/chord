@@ -198,7 +198,7 @@ defmodule Chord.Backend.Redis do
   end
 
   defp fetch_delta_count(key) do
-    [_, _, context_id] = String.split(key, ":")
+    [_, _, context_id] = String.split(key, ":", parts: 3)
     {:ok, count} = execute_redis(["ZCARD", key], fn res -> {:ok, res} end)
     %{context_id: context_id, count: count}
   end

@@ -1,29 +1,35 @@
-# Chord: Sync, Manage, and Harmonize Contexts 🎵
+# Chord
 
-Welcome to **Chord** — a flexible and powerful Elixir library designed to simplify context management and delta tracking in your distributed or real-time applications.
+![Chord Logo](https://raw.githubusercontent.com/stefanzvkvc/chord/main/assets/logo.png)
 
-## 🎯 Why Chord?
+Welcome to **Chord** - a flexible and powerful Elixir library designed to simplify context management and delta tracking in your distributed or real-time applications.
+
+[![Hex.pm](https://img.shields.io/hexpm/v/chord.svg)](https://hex.pm/packages/chord) [![Documentation](https://img.shields.io/badge/documentation-hexdocs-blue)](https://hexdocs.pm/chord)
+
+## Why Chord?
 When you need a solution for real-time state synchronization, partial updates, and efficient cleanup, Chord strikes the perfect note! Here’s what makes Chord special:
 
-- **Seamless State Sync**: Keep your clients up-to-date with full context or delta-based updates.
-- **Customizable Backend**: Use ETS, Redis, or your own backend implementation.
-- **Flexible Delta Formatting**: Define how your updates are structured.
-- **Periodic Cleanup**: Automatically clear stale contexts or deltas.
-- **Developer-Friendly APIs**: Simple, consistent, and easy-to-use APIs.
-- **Context Export and Restore**: Export contexts to or restore them from external providers.
-- **Partial Updates**: Apply updates to specific fields within a context.
+- **Seamless state sync**: Keep your clients up-to-date with full context or delta-based updates.
+- **Customizable backend**: Use ETS, Redis, or your own backend implementation.
+- **Flexible delta formatting**: Define how your updates are structured.
+- **Periodic cleanup**: Automatically clear stale contexts or deltas.
+- **Developer-friendly APIs**: Simple, consistent, and easy-to-use APIs.
+- **Context export and restore**: Export contexts to or restore them from external providers.
+- **Partial updates**: Apply updates to specific fields within a context.
+- **Delta Tracking**: Efficiently track and retrieve state changes.
+- **Flexible architecture**: Chord works in both stateful (via GenServer) and stateless modes (direct calls to backends like Redis or ETS). This flexibility makes it easier to adapt Chord to a variety of use cases.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting started
 
-### 1️⃣ Install the Library
+### Install the library
 Add Chord to your Mix dependencies:
 
 ```elixir
 def deps do
   [
-    {:chord, "~> 0.1.3"}
+    {:chord, "~> 0.1.4"}
   ]
 end
 ```
@@ -34,66 +40,262 @@ Run:
 mix deps.get
 ```
 
-### 2️⃣ Configure Chord
+### Configure Chord
 Add your desired configuration in `config/config.exs`:
 
 ```elixir
 config :chord,
-  backend: Chord.Backend.ETS,            # Choose your backend (Redis, ETS, etc.)
-  context_auto_delete: false,            # Enable or disable auto-deletion of old contexts
-  context_ttl: :timer.hours(6),          # Time-to-live for contexts
-  delta_ttl: :timer.hours(24),           # Time-to-live for deltas
-  delta_threshold: 100,                  # Number of deltas to retain
+  backend: Chord.Backend.ETS,                     # Choose your backend (Redis, ETS, etc.)
+  context_auto_delete: false,                     # Enable or disable auto-deletion of old contexts
+  context_ttl: 6 * 60 * 60,                       # Time-to-live for contexts
+  delta_ttl: 24 * 60 * 60,                        # Time-to-live for deltas
+  delta_threshold: 100,                           # Number of deltas to retain
   delta_formatter: Chord.Delta.Formatter.Default, # Format for deltas
-  time_provider: Chord.Utils.Time,       # Time provider for consistent timestamps
-  export_callback: nil,                  # Optional: Define a callback for exporting contexts
-  context_external_provider: nil         # Optional: Define a function for fetching external contexts
+  time_provider: Chord.Utils.Time,                # Time provider for consistent timestamps
+  export_callback: nil,                           # Optional: Define a callback for exporting contexts
+  context_external_provider: nil                  # Optional: Define a function for fetching external contexts
 ```
 
 ---
 
-## 🎹 How to Use Chord
+## How to use Chord
+In Chord, a **context** is basically a container for state. The term **“context”** might mean different things in various fields, but in Chord, it specifically means a **container for state**. Here are some examples to explain this idea:
 
-### Setting a Context
+- In a **chat application**, a context could be a group chat, including its details (e.g., participants, topic), and messages.
+- In a **game session**, a context might hold the game’s state, like player positions, scores, and progress.
+- In a **collaborative document editor**, a context could be the document’s state, keeping track of edits, updates, and collaborators.
+
+With this understanding of the term, let's look at some practical examples.
+
+### Setting a context
+Define the global context and track changes with deltas.
+
 ```elixir
-{:ok, result} = Chord.set_context("user:123", %{status: "online"})
-IO.inspect(result, label: "Context Set")
+Chord.set_context("user:123", %{status: "online", metadata: %{theme: "light", language: "en-US"}})
+{:ok,
+ %{
+   context: %{
+     version: 1,
+     context: %{
+       status: "online",
+       metadata: %{language: "en-US", theme: "light"}
+     },
+     inserted_at: 1737570501,
+     context_id: "user:123"
+   },
+   delta: %{
+     version: 1,
+     delta: %{
+       status: %{value: "online", action: :added},
+       metadata: %{value: %{language: "en-US", theme: "light"}, action: :added}
+     },
+     inserted_at: 1737570501,
+     context_id: "user:123"
+   }
+ }}
 ```
 
-### Updating a Context
+### Updating a context
+Updates a portion of the global context associated with a specific identifier.
+This function allows for partial modifications without affecting the entire context.
+
 ```elixir
-{:ok, result} = Chord.update_context("user:123", %{status: "away"})
-IO.inspect(result, label: "Context Updated")
+Chord.update_context("user:123", %{metadata: %{theme: "dark"}})
+{:ok,
+ %{
+   context: %{
+     version: 2,
+     context: %{status: "online", metadata: %{language: "en-US", theme: "dark"}},
+     inserted_at: 1737570583,
+     context_id: "user:123"
+   },
+   delta: %{
+     version: 2,
+     delta: %{
+       metadata: %{
+         theme: %{value: "dark", action: :modified, old_value: "light"}
+       }
+     },
+     inserted_at: 1737570583,
+     context_id: "user:123"
+   }
+ }}
 ```
 
-### Synchronizing State
+### Getting a context
+Fetches the current state for a specified identifier.
+
 ```elixir
-case Chord.sync_context("user:123", nil) do
-  {:full_context, context} -> IO.inspect(context, label: "Full Context")
-  {:delta, delta} -> IO.inspect(delta, label: "Delta Update")
-  {:no_change, version} -> IO.puts("No changes for version #{version}")
+Chord.get_context("user:123")
+{:ok,
+ %{
+   version: 2,
+   context: %{status: "online", metadata: %{language: "en-US", theme: "dark"}},
+   inserted_at: 1737570583,
+   context_id: "user:123"
+ }}
+```
+
+### Synchronizing state
+Synchronize the state for a given identifier.
+Depending on the version the client has, it will receive either the full context, only the changes (deltas), or a notification that there are no updates.
+
+```elixir
+Chord.sync_context("user:123", nil)
+{:full_context,
+ %{
+   version: 2,
+   context: %{status: "online", metadata: %{language: "en-US", theme: "dark"}},
+   inserted_at: 1737570583,
+   context_id: "user:123"
+ }}
+
+Chord.sync_context("user:123", 1)
+{:delta,
+ %{
+   version: 2,
+   delta: %{
+     metadata: %{theme: %{value: "dark", action: :modified, old_value: "light"}}
+   },
+   inserted_at: 1737570583,
+   context_id: "user:123"
+ }}
+
+Chord.sync_context("user:123", 2)
+{:no_change, 2}
+```
+
+### Exporting a context
+Save the current context for a specific identifier to external storage using the configured export callback.
+
+#### Defining the export callback
+To enable the export functionality, you need to define a callback function in your application. This function will handle how the context is exported (e.g., saving it to a database). Here’s an example:
+
+```elixir
+defmodule MyApp.ContextExporter do
+  @moduledoc """
+  Handles exporting contexts to external storage.
+  """
+
+  @spec export_context(map()) :: :ok | {:error, term()}
+  def export_context(context_data) do
+    %{context_id: context_id, version: verion, context: context} = context_data
+    # Example: Save context_data to an external database or storage
+    case ExternalStorage.save(context_id, context, version) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
 end
 ```
 
-### Exporting a Context
+#### Configure the export callback
+Next, configure the export callback in your application’s environment. This tells Chord how to handle context exports.
+
 ```elixir
-:ok = Chord.export_context("user:123")
+# config/config.exs
+config :chord, :export_callback, &MyApp.ContextExporter.export_context/1
 ```
 
-### Restoring a Context
+#### Use Chord.export_context/1
+Once the callback is configured, you can use function to export a specific context to external storage:
+
 ```elixir
-{:ok, restored_context} = Chord.restore_context("user:123")
-IO.inspect(restored_context, label: "Restored Context")
+Chord.export_context("user:123")
+:ok
 ```
 
-### Cleanup Operations
-Run periodic cleanup to remove stale data:
+### Deleting a context
+Removes the entire context and its associated deltas.
+
+```elixir
+Chord.delete_context("user:123")
+:ok
+```
+
+### Restoring a context
+Retrieve and restore a context from an external provider to the current backend.
+
+#### Define the restore callback
+First, define a module and function that will handle the logic for retrieving a context. For example:
+
+```elixir
+defmodule MyApp.ContextRestorer do
+  @moduledoc """
+  Handles restoring contexts from external storage.
+  """
+
+  @spec restore_context(String.t()) :: {:ok, map()} | {:error, term()}
+  def restore_context(context_id) do
+    # Example: Retrieve the context from a database or other storage system
+    case ExternalStorage.get(context_id) do
+      {:ok, %{context: context, version: version}} -> {:ok, %{context: context, version: version}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+end
+```
+
+#### Configure the restore callback
+Next, configure the restore callback in your application’s environment. This tells Chord how to handle context restoration:
+
+```elixir
+# config/config.exs
+config :chord, :context_external_provider, &MyApp.ContextRestorer.restore_context/1
+```
+
+#### Use Chord.restore_context/1
+Once the callback is configured, you can use function to retrieve and restore a specific context:
+
+```elixir
+Chord.restore_context("user:1234")
+{:ok,
+ %{
+   version: 10,
+   context: %{source: "external storage provider"},
+   inserted_at: 1737464001,
+   context_id: "user:1234"
+ }}
+```
+
+### Cleanup operations
+Chord provides cleanup functionality to remove stale contexts and deltas. To enable and configure this feature, add the following settings to your application configuration:
+
+#### Configuration options
+
+```elixir
+config :chord,
+  context_auto_delete: true, # Enable or disable auto-deletion of old contexts
+  context_ttl: 6 * 60 * 60,  # Time-to-live for contexts (in seconds)
+  delta_ttl: 24 * 60 * 60,   # Time-to-live for deltas (optional, in seconds)
+  delta_threshold: 100       # Number of delta versions to retain (optional)
+```
+
+#### How it works
+- Context cleanup:
+  - Set **context_auto_delete: true** to enable context cleanup.
+  - Configure **context_ttl** to define how long contexts should remain in memory before being deleted. The value must be in seconds, as timestamps are created with second-level precision.
+  - When a context is deleted, all associated deltas are automatically cleaned up as well.
+
+- Delta cleanup:
+  - To clean deltas by age, set **delta_ttl** to specify the maximum time deltas should remain in memory.
+  - To clean deltas by number, set **delta_threshold** to define the maximum number of deltas to retain.
+
+
+#### Example usage
+Run the cleanup process manually with:
 
 ```elixir
 Chord.cleanup(limit: 50)
 ```
 
-### Managing the Cleanup Server
+#### Future plans
+In the future, you’ll be able to configure the time unit (e.g., seconds, milliseconds), which will be used when generating timestamps.
+This configuration will apply to the function responsible for providing the current time, primarily used when setting inserted_at during data storage in memory.
+
+If the configured time unit is set to seconds, related configurations such as context_ttl and delta_ttl will also need to be specified in seconds to ensure consistency.
+
+### Managing the cleanup server
 Start and manage the Cleanup Server for automated periodic cleanup:
 
 ```elixir
@@ -105,64 +307,222 @@ Chord.stop_cleanup_server()
 
 ---
 
-## 🛠️ Customization
+## Customization
 
 ### Backends
 Chord supports multiple backends out-of-the-box:
 
-- **ETS** (In-Memory)
-- **Redis** (Distributed)
+- **ETS** (In-Memory): No additional setup is required.
+- **Redis** (Distributed): Requires a Redis instance and some configuration.
 
-You can implement your own backend by adhering to the `Chord.Backend.Behaviour`.
+#### Using Redis as a backend
+To use Redis as the backend for Chord, follow these steps:
 
-### Delta Formatters
-Customize how deltas are structured by implementing the `Chord.Delta.Formatter` behaviour.
+1. **Start Redis**: Ensure a Redis server is running.
+2. **Set up the Redis connection**: Start a Redis connection process using the Redix library, which is included with Chord:
 
-## ⚡ Features at a Glance
+```elixir
+{:ok, _} = Redix.start_link("redis://localhost:6379", name: :my_redis)
+```
 
-| Feature                  | Description                                      |
-|--------------------------|--------------------------------------------------|
-| **Real-Time Sync**       | Delta-based and full-context synchronization.    |
-| **Customizable Backends**| Redis, ETS, or your own custom backend.          |
-| **Periodic Cleanup**     | Automatically remove stale data.                 |
-| **Partial Updates**      | Update only specific fields in a context.        |
-| **Delta Tracking**       | Efficiently track and retrieve state changes.    |
-| **Context Export**       | Export context to external storage.              |
-| **Context Restore**      | Restore context from external providers.         |
+3. **Configure Chord to use Redis**: Set the Redis client and backend in your application’s
+
+```elixir
+# config/config.exs
+config :chord,
+  backend: Chord.Backend.Redis,
+  redis_client: :my_redis
+```
+
+You can also implement your own backend by adhering to the `Chord.Backend.Behaviour`.
+
+### Delta formatters
+Chord provides the ability to define custom delta formatters by implementing the `Chord.Delta.Formatter.Behaviour`. This feature is useful for tailoring how deltas (changes) are formatted to suit your application’s requirements.
+
+#### Defining a custom delta formatter
+To define a custom delta formatter, create a module that implements the `Chord.Delta.Formatter.Behaviour`:
+
+```elixir
+defmodule MyApp.CustomFormatter do
+  @moduledoc """
+  A custom delta formatter for Chord, demonstrating how to implement the behavior.
+  """
+
+  @behaviour Chord.Delta.Formatter.Behaviour
+
+  @impl true
+  def format(delta, context_id) do
+    timestamp = DateTime.utc_now() |> DateTime.to_iso8601()
+
+    Enum.map(delta, fn {key, change} ->
+      base = %{
+        timestamp: timestamp,
+        context_id: context_id,
+        field: key,
+        action: change.action
+      }
+
+      case change.action do
+        :added ->
+          Map.put(base, :new_value, change.value)
+
+        :modified ->
+          Map.merge(base, %{old_value: change.old_value, new_value: change.value})
+
+        :removed ->
+          base
+      end
+    end)
+  end
+end
+```
+
+#### Configuring Chord to use your delta formatter
+Once you’ve defined your custom formatter, configure Chord to use it by setting it in the application environment:
+
+```elixir
+# config/config.exs
+config :chord, :delta_formatter, MyApp.CustomFormatter
+```
+
+#### Example usage
+
+```elixir
+delta = %{
+  a: %{action: :added, value: 1},
+  b: %{action: :modified, old_value: 2, value: 3},
+  c: %{action: :removed}
+}
+
+context_id = "game:42"
+
+formatted_delta = MyApp.CustomFormatter.format(delta, context_id)
+
+IO.inspect(formatted_delta)
+[
+  %{
+    timestamp: "2025-01-22T15:00:00Z",
+    context_id: "game:42",
+    field: :a,
+    action: :added,
+    new_value: 1
+  },
+  %{
+    timestamp: "2025-01-22T15:00:00Z",
+    context_id: "game:42",
+    field: :b,
+    action: :modified,
+    old_value: 2,
+    new_value: 3
+  },
+  %{
+    timestamp: "2025-01-22T15:00:00Z",
+    context_id: "game:42",
+    field: :c,
+    action: :removed
+  }
+]
+```
+
+### Custom time provider
+Chord allows you to define custom time provider by implementing the `Chord.Utils.Time.Behaviour`. This feature is useful for customizing time-based operations, such as timestamp generation and for mocking time in tests.
+
+#### Defining a custom time provider
+To define your custom time provider, create a module that implements the `Chord.Utils.Time.Behaviour`:
+
+```elixir
+defmodule MyApp.CustomTimeProvider do
+  @moduledoc """
+  A custom time provider for Chord, demonstrating how to implement the behavior.
+  """
+
+  @behaviour Chord.Utils.Time.Behaviour
+
+  @impl true
+  def current_time(:second) do
+    # Example: Use a custom logic for time in seconds
+    DateTime.utc_now() |> DateTime.to_unix(:second)
+  end
+
+  @impl true
+  def current_time(:millisecond) do
+    # Example: Use a custom logic for time in milliseconds
+    DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+  end
+end
+```
+
+#### Configuring Chord to use your time provider
+
+```elixir
+# config/config.exs
+config :chord, :time_provider, MyApp.CustomTimeProvider
+```
 
 ---
 
-## 🕰 Benchmark Results
+## Benchmark results: Redis and ETS performance
 
-Chord has been benchmarked using Redis and ETS backends under both stateless and stateful architectures. Below are the results for various scenarios:
+Chord has been tested to ensure solid performance in both Redis (single-node setup for now, with plans for distributed scenarios) and ETS (in-memory, single-node applications). Here’s how it performs under various scenarios:
 
-### Redis Benchmark Results
+## Scenarios tested
 
-#### With Input Data
+### 1. Stateless operations
+These scenarios simulate operations without maintaining a dedicated process per context. All updates, syncs and state modifications happen directly through the library’s API.
 
-| Scenario                                             | IPS    | Avg. Time | Deviation | Median Time | 99th Percentile |
-|------------------------------------------------------|--------|-----------|-----------|-------------|-----------------|
-| Stateless - Single Context (50 participants)         | 62.79  | 15.93 ms  | ±18.03%   | 15.88 ms    | 22.99 ms        |
-| Stateful - Single Context (50 participants)          | 7.69   | 130.07 ms | ±51.34%   | 102.08 ms   | 270.40 ms       |
-| Stateless - Multiple Contexts (100 contexts)         | 2.08   | 481.38 ms | ±3.48%    | 474.73 ms   | 511.20 ms       |
-| Stateful - Multiple Contexts (100 contexts)          | 1.85   | 541.19 ms | ±3.51%    | 541.24 ms   | 566.32 ms       |
+- **Single context (50 participants):** Represents a single group chat or meeting with 50 participants frequently updating their status, typing indicators, or syncing state.
+- **Multiple contexts (100 contexts):** Simulates 100 independent group chats or meetings being updated simultaneously.
 
-**Comparison:**
-- Stateless - Single Context: 62.79x faster than Stateful - Multiple Contexts.
+### 2. Stateful operations
+These scenarios introduce a process per context (e.g., a GenServer for each group chat). Each participant interacts with this stateful process and the process uses Chord’s API to manage context.
 
-### ETS Benchmark Results
+- **Single context (50 participants):** A single group chat or meeting managed by a GenServer, handling frequent updates and syncs from 50 participants.
+- **Multiple contexts (100 contexts):** Simulates 100 group chats or meetings, each managed by its own GenServer, handling participant interactions.
 
-#### With Input Data
+## Results
 
-| Scenario                                             | IPS    | Avg. Time | Deviation | Median Time | 99th Percentile |
-|------------------------------------------------------|--------|-----------|-----------|-------------|-----------------|
-| Stateless - Single Context (50 participants)         | 151.19 | 6.61 ms   | ±20.47%   | 6.46 ms     | 14.43 ms        |
-| Stateful - Single Context (50 participants)          | 29.56  | 33.82 ms  | ±13.06%   | 36.05 ms    | 45.56 ms        |
-| Stateless - Multiple Contexts (100 contexts)         | 3.51   | 284.85 ms | ±14.28%   | 279.17 ms   | 405.34 ms       |
-| Stateful - Multiple Contexts (100 contexts)          | 3.73   | 268.05 ms | ±23.67%   | 237.10 ms   | 374.59 ms       |
+### Redis backend (single node)
 
-**Comparison:**
-- Stateless - Single Context: 43.07x faster than Stateful - Multiple Contexts.
+> **Note:** Redis benchmarks were conducted in a single-node configuration to evaluate baseline performance. While Redis is designed for distributed systems, a fully distributed environment is not yet implemented in the benchmark script. Plans are underway to expand the benchmarking script to support distributed scenarios.
+
+| **Scenario**                       | **Operations/sec** | **Average Time** | **Notes**                                        |
+|------------------------------------|--------------------|------------------|--------------------------------------------------|
+| Stateless - Single Context (50)    | 92.89 ops/s        | 10.77 ms         | Handles concurrent operations efficiently.       |
+| Stateful - Single Context (50)     | 18.80 ops/s        | 53.19 ms         | Performance impacted by GenServer overhead.      |
+| Stateful - Multiple Contexts (100) | 1.72 ops/s         | 581.46 ms        | Slower due to process sync overhead.             |
+| Stateless - Multiple Contexts (100)| 1.57 ops/s         | 635.29 ms        | Poor throughput under high multi-context load.   |
+
+### ETS Backend (In-Memory, Single-Node)
+
+| **Scenario**                       | **Operations/sec** | **Average Time** | **Notes**                                        |
+|------------------------------------|--------------------|------------------|--------------------------------------------------|
+| Stateless - Single Context (50)    | 230.61 ops/s       | 4.34 ms          | Extremely fast for single-node setups.           |
+| Stateful - Single Context (50)     | 54.34 ops/s        | 18.40 ms         | GenServer overhead slows performance.            |
+| Stateful - Multiple Contexts (100) | 5.66 ops/s         | 176.81 ms        | Scales well but slower with 100 contexts.        |
+| Stateless - Multiple Contexts (100)| 4.69 ops/s         | 213.18 ms        | Limited scalability for multi-context updates.   |
+
+## Key insights
+
+### Redis:
+- **Single-node performance**: Reflects the baseline for Redis's capability, with potential for distributed scaling in the future.
+- **Stateless operations** Outperform stateful ones when multiple clients update a single context concurrently. The absence of GenServer synchronization overhead makes Redis particularly well-suited for high-frequency, multi-client updates to shared contexts.
+- **Stateful performance bottlenecks**: Syncing multiple contexts (100) causes significant performance degradation due to process synchronization and network overhead.
+- **Future improvements**: A distributed Redis setup would allow benchmarking its true scalability and potential for handling high-throughput, multi-context scenarios.
+
+### ETS:
+- **Optimal for single-node applications**: Outshines Redis in single-node scenarios, particularly in stateless operations where 50 participants concurrently update a single context, achieving 230.61 ops/sec with just 4.34 ms latency.
+- **GenServer overhead**: Stateful operations see reduced performance due to process-based synchronization, especially with many contexts (e.g., 100).
+- **Scalability limitations:**: While ETS is efficient for localized, single-node setups, it struggles with multi-context workloads, where its performance drops to 4.69 ops/sec for stateless and 5.66 ops/sec for stateful scenarios.
+
+## Choosing between stateless and stateful
+
+### Stateless:
+- Directly interacts with Chord’s API, bypassing the need for per-context processes.
+- **Best for**: High-concurrency scenarios where multiple clients update a single shared context. Performance degrades under high multi-context workloads, particularly in Redis.
+
+### Stateful:
+- Manages a dedicated GenServer per context (e.g., per group chat or meeting).
+- **Best for**: Scenarios requiring additional application-level state or business logic. However, high-concurrency and multi-context workloads may lead to significant performance degradation.
 
 ### Device Information
 
@@ -184,11 +544,11 @@ Chord has been benchmarked using Redis and ETS backends under both stateless and
 
 ---
 
-## 🧰 Contributing
+## Contributing
 
 Contributions from the community are welcome to make Chord even better! Whether it's fixing bugs, improving documentation, or adding new features, your help is greatly appreciated.
 
-### How to Contribute
+### How to contribute
 1. Fork the repository.
 2. Create a new branch for your changes.
 3. Make your changes and test them thoroughly.
@@ -198,7 +558,7 @@ Feel free to open issues for discussion or if you need help. Together, we can bu
 
 ---
 
-## 🛡️ Testing
+## Testing
 Chord comes with a robust suite of tests to ensure reliability. Run tests with:
 
 ```bash

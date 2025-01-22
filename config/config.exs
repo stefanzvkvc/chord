@@ -18,7 +18,7 @@ config :chord,
 
   # Delta Time-to-Live
   # Retain deltas for 24 hours; suitable for most real-time applications
-  delta_ttl: :timer.hours(24),
+  delta_ttl: 24 * 60 * 60,
 
   # Number of versions to retain
   # Retain 100 versions as a balance between storage use and rollback capability

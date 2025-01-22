@@ -49,7 +49,7 @@ defmodule Chord.Delta do
       added_or_modified =
         Enum.reduce(new_context, %{}, fn {key, new_value}, acc ->
           case Map.get(current_context, key) do
-            nil ->
+            nil when not is_map_key(current_context, key) ->
               Map.put(acc, key, %{action: :added, value: new_value})
 
             old_value when is_map(old_value) and is_map(new_value) ->
