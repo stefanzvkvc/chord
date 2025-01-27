@@ -1,74 +1,125 @@
 defmodule Chord.Delta.Formatter.Default do
   @moduledoc """
-  Default implementation for delta formatting.
+  Default implementation for delta formatting in Chord.
 
-  This module provides a straightforward and opinionated way to format deltas into a list of maps.
-  Each map describes a change to a specific key in the context, including metadata such as the action
-  performed (e.g., `:added`, `:modified`, `:removed`) and the associated `context_id`.
+  This module transforms delta maps into a standardized format that is easy to process,
+  serialize, and consume. Each change is flattened into a list of maps, providing details such as
+  the action performed (`:added`, `:modified`, `:removed`), the affected key path, and associated metadata
+  like `context_id`.
 
-  The formatting is intended to be extensible, allowing developers to substitute this formatter
-  with a custom implementation by defining their own module and setting it in the application configuration.
+  ## Customization
 
-  ## Example
-      iex> delta = %{
-      ...>   a: %{action: :added, value: 1},
-      ...>   b: %{action: :modified, old_value: 2, value: 3},
-      ...>   c: %{action: :removed}
-      ...> }
-      iex> context_id = "game:1"
-      iex> Chord.Delta.Formatter.Default.format(delta, context_id)
-      [
-        %{key: :a, action: :added, value: 1, context: "game:1"},
-        %{key: :b, action: :modified, old_value: 2, value: 3, context: "game:1"},
-        %{key: :c, action: :removed, context: "game:1"}
-      ]
+  Developers can implement their own delta formatter by defining a module that adheres to
+  the `Chord.Delta.Formatter.Behaviour` and setting it in the application configuration.
+
+      defmodule MyApp.CustomFormatter do
+        @behaviour Chord.Delta.Formatter.Behaviour
+
+        def format(delta, metadata) do
+          # Custom formatting logic here
+        end
+      end
+
+  To configure your formatter:
+
+      config :chord, delta_formatter: MyApp.CustomFormatter
   """
 
   @behaviour Chord.Delta.Formatter.Behaviour
 
   @doc """
-  Formats the given delta into a standardized list of maps.
+  Formats a delta map into a standardized format with metadata.
 
-  This implementation adds the `context_id` to each change and formats changes as follows:
-  - For `:added`, includes the new `value`.
-  - For `:modified`, includes both the `old_value` and the new `value`.
-  - For `:removed`, includes only the `key` and `context_id`.
+  This function processes deltas, flattening key paths into lists and associating
+  each change with additional metadata such as `context_id`.
 
   ## Parameters
     - `delta` (map): The delta map representing changes to the context.
-    - `context_id` (any): The context ID to associate with each change.
+    - `metadata` (map): A keyword list or map containing additional information, such as:
+      - `:context_id` - The identifier of the context.
+      - `:version` - The version of the context being formatted.
 
   ## Returns
-    - (list of maps): A list of formatted changes.
+    - A map with the following structure:
+      - `:version` - The version number provided in `metadata` (optional).
+      - `:changes` - A list of formatted changes, each represented as a map.
 
-  ## Example
+  ## Examples
       iex> delta = %{
-      ...>   a: %{action: :added, value: 1},
-      ...>   b: %{action: :modified, old_value: 2, value: 3},
-      ...>   c: %{action: :removed}
+      ...>   status: %{action: :added, value: "online"},
+      ...>   metadata: %{
+      ...>     language: %{action: :added, value: "en-US"},
+      ...>     theme: %{action: :modified, old_value: "light", value: "dark"}
+      ...>   }
       ...> }
-      iex> Chord.Delta.Formatter.Default.format(delta, "game:1")
-      [
-        %{key: :a, action: :added, value: 1, context: "game:1"},
-        %{key: :b, action: :modified, old_value: 2, value: 3, context: "game:1"},
-        %{key: :c, action: :removed, context: "game:1"}
-      ]
-  """
-  @spec format(map(), any()) :: list(map())
-  @impl true
-  def format(delta, context_id) do
-    Enum.map(delta, fn {key, change} ->
-      base = %{
-        key: key,
-        action: change.action,
-        context: context_id
+      iex> metadata = %{context_id: "user:369", version: 2}
+      iex> Chord.Delta.Formatter.Default.format(delta, metadata)
+      %{
+        version: 2,
+        changes: [
+          %{value: "online", key: :status, action: :added, context_id: "user:369"},
+          %{
+            value: "en-US",
+            key: [:metadata, :language],
+            action: :added,
+            context_id: "user:369"
+          },
+          %{
+            value: "dark",
+            key: [:metadata, :theme],
+            action: :modified,
+            context_id: "user:369",
+            old_value: "light"
+          }
+        ]
       }
+  """
+  @spec format(map(), any()) :: map()
+  @impl true
+  def format(delta, metadata \\ %{}) do
+    version = Map.get(metadata, :version)
+    context_id = Map.get(metadata, :context_id)
 
-      case change.action do
-        :added -> Map.put(base, :value, change.value)
-        :modified -> Map.merge(base, %{old_value: change.old_value, value: change.value})
-        :removed -> base
-      end
+    formatted_changes =
+      Enum.flat_map(delta, fn {key, change} ->
+        format_change(key, change, context_id)
+      end)
+
+    %{
+      version: version,
+      changes: formatted_changes
+    }
+  end
+
+  defp format_change(key, change, context_id)
+       when is_map(change) and not is_map_key(change, :action) do
+    Enum.flat_map(change, fn {nested_key, nested_change} ->
+      nested_path = [key | List.wrap(nested_key)]
+      format_change(nested_path, nested_change, context_id)
     end)
+  end
+
+  defp format_change(key_path, %{action: :added, value: value}, context_id) do
+    [%{key: key_path, action: :added, value: value, context_id: context_id}]
+  end
+
+  defp format_change(
+         key_path,
+         %{action: :modified, old_value: old_value, value: value},
+         context_id
+       ) do
+    [
+      %{
+        key: key_path,
+        action: :modified,
+        old_value: old_value,
+        value: value,
+        context_id: context_id
+      }
+    ]
+  end
+
+  defp format_change(key_path, %{action: :removed, old_value: old_value}, context_id) do
+    [%{key: key_path, action: :removed, old_value: old_value, value: nil, context_id: context_id}]
   end
 end

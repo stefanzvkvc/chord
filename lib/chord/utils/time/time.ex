@@ -11,11 +11,13 @@ defmodule Chord.Utils.Time do
   use a custom implementation, define a module adhering to the
   `Chord.Utils.Time.Behaviour` and configure it in your application:
 
-      config :chord, :time, MyCustomTimeProvider
+      config :chord,
+        time_provider: MyCustomTimeProvider,
+        time_unit: :second
 
   ## Example
-
-      iex> Chord.Utils.Time.current_time(:second)
+      iex> time_unit = Application.get_env(:chord, :time_unit)
+      iex> Chord.Utils.Time.current_time(time_unit)
       1672531200
   """
 
@@ -25,24 +27,28 @@ defmodule Chord.Utils.Time do
   Returns the current time in the specified unit.
 
   ## Parameters
-
     - `unit` (:second | :millisecond): The desired unit for the time value.
 
   ## Returns
-
     - The current time as an integer, in the specified unit.
 
   ## Example
-
-      iex> Chord.Utils.Time.current_time(:second)
+      iex> time_unit = Application.get_env(:chord, :time_unit)
+      iex> Chord.Utils.Time.current_time(time_unit)
       1672531200
 
-      iex> Chord.Utils.Time.current_time(:millisecond)
+      iex> Application.put_env(:chord, :time_unit, :millisecond)
+      iex> time_unit = Application.get_env(:chord, :time_unit)
+      iex> Chord.Utils.Time.current_time(time_unit)
       1672531200000
   """
   @impl true
-  def current_time(:second), do: :os.system_time(:second)
+  def current_time(:second) do
+    :os.system_time(:second)
+  end
 
   @impl true
-  def current_time(:millisecond), do: :os.system_time(:millisecond)
+  def current_time(:millisecond) do
+    :os.system_time(:millisecond)
+  end
 end

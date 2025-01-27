@@ -15,7 +15,7 @@ defmodule Chord.DeltaTest do
     test "calculates removed keys" do
       current_context = %{name: "Alice", age: 30}
       new_context = %{name: "Alice"}
-      expected_delta = %{age: %{action: :removed}}
+      expected_delta = %{age: %{action: :removed, old_value: 30}}
 
       assert Delta.calculate_delta(current_context, new_context) == expected_delta
     end
@@ -70,8 +70,8 @@ defmodule Chord.DeltaTest do
 
     test "handles removed keys" do
       delta1 = %{name: %{action: :added, value: "Alice"}}
-      delta2 = %{name: %{action: :removed}}
-      expected_delta = %{name: %{action: :removed}}
+      delta2 = %{name: %{action: :removed, old_value: "Alice"}}
+      expected_delta = %{name: %{action: :removed, old_value: "Alice"}}
 
       assert Delta.merge_deltas([delta1, delta2]) == expected_delta
     end
@@ -97,7 +97,7 @@ defmodule Chord.DeltaTest do
 
       delta4 = %{
         users: %{
-          "Alice" => %{avatar: %{action: :removed}}
+          "Alice" => %{avatar: %{action: :removed, old_value: "avatar_url"}}
         }
       }
 
@@ -105,7 +105,7 @@ defmodule Chord.DeltaTest do
         users: %{
           "Alice" => %{
             status: %{value: "online", action: :modified, old_value: "offline"},
-            avatar: %{action: :removed},
+            avatar: %{action: :removed, old_value: "avatar_url"},
             about: %{value: "Alice In Wonderland", action: :modified, old_value: nil}
           }
         }
@@ -118,17 +118,52 @@ defmodule Chord.DeltaTest do
   describe "format_delta/2" do
     test "formats delta" do
       delta = %{name: %{action: :modified, old_value: "Alice", value: "Bob"}}
-      formatted = Delta.format_delta(delta, "group:1")
+      formatted = Delta.format_delta(delta, %{context_id: "group:1", version: 1})
 
-      assert formatted == [
-               %{
-                 context: "group:1",
-                 key: :name,
-                 action: :modified,
-                 old_value: "Alice",
-                 value: "Bob"
-               }
-             ]
+      assert formatted == %{
+               version: 1,
+               changes: [
+                 %{
+                   value: "Bob",
+                   key: :name,
+                   action: :modified,
+                   context_id: "group:1",
+                   old_value: "Alice"
+                 }
+               ]
+             }
+    end
+
+    test "handles nested delta" do
+      delta = %{
+        status: %{action: :added, value: "online"},
+        metadata: %{
+          language: %{action: :added, value: "en-US"},
+          theme: %{action: :modified, old_value: "light", value: "dark"}
+        }
+      }
+
+      formatted = Delta.format_delta(delta, %{context_id: "user:369", version: 2})
+
+      assert formatted == %{
+               changes: [
+                 %{action: :added, context_id: "user:369", key: :status, value: "online"},
+                 %{
+                   action: :added,
+                   context_id: "user:369",
+                   key: [:metadata, :language],
+                   value: "en-US"
+                 },
+                 %{
+                   action: :modified,
+                   context_id: "user:369",
+                   key: [:metadata, :theme],
+                   old_value: "light",
+                   value: "dark"
+                 }
+               ],
+               version: 2
+             }
     end
   end
 end

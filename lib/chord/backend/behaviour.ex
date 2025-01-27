@@ -2,18 +2,27 @@ defmodule Chord.Backend.Behaviour do
   @moduledoc """
   Defines the behavior for backends used by Chord.
 
+  A **backend** is the underlying data storage mechanism responsible for managing
+  and persisting context and delta data. Backends enable Chord to integrate with
+  various storage solutions, including in-memory systems like ETS, distributed
+  systems like Redis, or even custom storage implementations.
+
   This module specifies the contract that any backend implementation must adhere to.
-  It provides a consistent interface for managing context and delta data, supporting
-  operations for context storage, delta tracking, and cleanup.
+  It provides a consistent interface for managing context and delta data,
+  supporting operations for context storage, delta tracking, and cleanup.
 
   ## Key Concepts
 
-  - **Context Operations:** Manage context data associated with a unique `context_id`.
-  - **Delta Operations:** Track and retrieve changes (deltas) associated with contexts.
-  - **Listing Operations:** Enable filtering and listing of contexts and deltas.
+  - **Context operations:** Manage context data associated with a unique `context_id`.
+  - **Delta operations:** Track and retrieve changes (deltas) associated with contexts.
+  - **Listing operations:** Enable filtering and listing of contexts and deltas.
   - **Cleanup:** Support for deleting old or unnecessary data to maintain performance.
 
-  Developers can implement this behavior to provide custom backends (e.g., Redis, Database).
+  ## Examples of backends
+
+  - **ETS:** Fast, in-memory storage for single-node applications.
+  - **Redis:** A distributed in-memory data store for sharing data across nodes.
+  - **PostgreSQL/MySQL:** Relational databases for structured and persistent data storage.
 
   ## Example Usage
 
@@ -22,16 +31,24 @@ defmodule Chord.Backend.Behaviour do
       defmodule MyApp.CustomBackend do
         @behaviour Chord.Backend.Behaviour
 
-        def set_context(context_id, context, version), do: # implementation
-        def get_context(context_id), do: # implementation
-        def delete_context(context_id), do: # implementation
+        def set_context(context_id, context, version) do
+          # implementation
+        end
+
+        def get_context(context_id) do
+          # implementation
+        end
+
+        def delete_context(context_id) do
+          # implementation
+        end
+
         # Implement all other callbacks...
       end
 
   Once implemented, configure the backend in your application:
 
       config :chord, :backend, MyApp.CustomBackend
-
   """
 
   # Context operations
@@ -45,21 +62,21 @@ defmodule Chord.Backend.Behaviour do
     - `version` (integer): The version number associated with the context.
 
   ## Returns
-  - `{:ok, %{context_id: any(), context: map(), version: integer(), inserted_at: integer()}}` on success.
-  - `{:error, term()}` on failure.
+    - `{:ok, %{context_id: any(), context: map(), version: integer(), inserted_at: integer()}}` on success.
+    - `{:error, term()}` on failure.
   """
   @callback set_context(context_id :: any(), context :: map(), version :: integer()) ::
               {:ok, map()} | {:error, term()}
 
   @doc """
-  Retrieves the context and version for a given `context_id`.
+  Retrieves the context data for a given `context_id`.
 
   ## Parameters
     - `context_id` (any): The identifier for the context.
 
   ## Returns
-  - `{:ok, %{context_id: any(), context: map(), version: integer(), inserted_at: integer()}}` on success.
-  - `{:error, term()}` on failure.
+    - `{:ok, %{context_id: any(), context: map(), version: integer(), inserted_at: integer()}}` on success.
+    - `{:error, term()}` on failure.
   """
   @callback get_context(context_id :: any()) :: {:ok, map()} | {:error, term()}
 
@@ -86,8 +103,8 @@ defmodule Chord.Backend.Behaviour do
     - `version` (integer): The version number associated with the delta.
 
   ## Returns
-  - `{:ok, %{context_id: any(), delta: map(), version: integer(), inserted_at: integer()}}` on success.
-  - `{:error, term()}` on failure.
+    - `{:ok, %{context_id: any(), delta: map(), version: integer(), inserted_at: integer()}}` on success.
+    - `{:error, term()}` on failure.
   """
   @callback set_delta(context_id :: any(), delta :: map(), version :: integer()) ::
               {:ok, map()} | {:error, term()}

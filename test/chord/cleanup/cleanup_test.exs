@@ -12,7 +12,7 @@ defmodule Chord.CleanupTest do
     Application.put_env(:chord, :delta_ttl, :timer.hours(3))
     Application.put_env(:chord, :delta_threshold, 100)
 
-    {:ok, current_time: 1_673_253_120}
+    {:ok, current_time: 1737888978}
   end
 
   describe "Context cleanup" do
@@ -21,7 +21,7 @@ defmodule Chord.CleanupTest do
     } do
       Application.put_env(:chord, :context_auto_delete, false)
 
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_deltas([])
       mock_list_contexts_with_delta_counts([])
 
@@ -37,7 +37,7 @@ defmodule Chord.CleanupTest do
       context_ttl = Application.get_env(:chord, :context_ttl)
       context_time = current_time - context_ttl - 1
 
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_contexts(context_id: context_id, inserted_at: context_time)
       mock_get_context(context_id: context_id, context: context, version: 1)
       mock_delete_context(context_id: context_id)
@@ -56,7 +56,7 @@ defmodule Chord.CleanupTest do
       context_ttl = Application.get_env(:chord, :context_ttl)
       active_context_time = current_time - context_ttl + 100
 
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_contexts(context_id: context_id, inserted_at: active_context_time)
       mock_list_contexts_with_delta_counts([])
     end
@@ -64,7 +64,7 @@ defmodule Chord.CleanupTest do
     test "handles empty contexts gracefully", %{
       current_time: current_time
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_contexts([])
       mock_list_deltas([])
       mock_list_contexts_with_delta_counts([])
@@ -80,7 +80,7 @@ defmodule Chord.CleanupTest do
       delta_time = current_time - delta_ttl - 1
       older_than_time = current_time - delta_ttl
 
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_deltas(context_id: context_id, inserted_at: delta_time)
       mock_delete_deltas_by_time(context_id: context_id, older_than_time: older_than_time)
       mock_list_contexts_with_delta_counts([])
@@ -94,7 +94,7 @@ defmodule Chord.CleanupTest do
       context_id = "game:1"
       delta_threshold = Application.get_env(:chord, :delta_threshold)
 
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_deltas([])
 
       mock_list_contexts_with_delta_counts([
@@ -113,7 +113,7 @@ defmodule Chord.CleanupTest do
       delta_ttl = Application.get_env(:chord, :delta_ttl)
       active_delta_time = current_time - delta_ttl + 100
 
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_deltas(context_id: context_id, inserted_at: active_delta_time)
       mock_list_contexts_with_delta_counts([])
 
@@ -123,7 +123,7 @@ defmodule Chord.CleanupTest do
     test "handles empty deltas gracefully", %{
       current_time: current_time
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_deltas([])
       mock_list_contexts_with_delta_counts([])
 
@@ -139,7 +139,7 @@ defmodule Chord.CleanupTest do
     context_time = current_time - context_ttl - 1
     delta_time = current_time - delta_ttl - 1
 
-    mock_time([unit: :second, time: current_time], 5)
+    mock_time([time: current_time], 5)
     mock_list_contexts([context_id: context_id, inserted_at: context_time], 5)
     mock_delete_context([context_id: context_id], 5)
     mock_list_deltas([context_id: context_id, inserted_at: delta_time], 5)

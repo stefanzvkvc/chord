@@ -35,56 +35,67 @@ defmodule Chord.Delta do
       iex> Chord.Delta.calculate_delta(current_context, new_context)
       %{
         b: %{action: :modified, old_value: 2, value: 5},
-        c: %{action: :removed},
+        c: %{action: :removed, old_value: 3},
         d: %{action: :added, value: 4}
       }
   """
   @spec calculate_delta(current_context :: map(), new_context :: map()) :: map()
   def calculate_delta(current_context, new_context)
+      when is_map(current_context) and is_map(new_context) and current_context == new_context,
+      do: %{}
+
+  def calculate_delta(current_context, new_context)
       when is_map(current_context) and is_map(new_context) do
-    if current_context == new_context do
-      %{}
-    else
-      # Detect added and modified keys
-      added_or_modified =
-        Enum.reduce(new_context, %{}, fn {key, new_value}, acc ->
-          case Map.get(current_context, key) do
-            nil when not is_map_key(current_context, key) ->
-              Map.put(acc, key, %{action: :added, value: new_value})
+    # Detect added and modified keys
+    added_or_modified =
+      Enum.reduce(new_context, %{}, fn {key, new_value}, acc ->
+        old_value = Map.get(current_context, key)
 
-            old_value when is_map(old_value) and is_map(new_value) ->
-              nested_delta = calculate_delta(old_value, new_value)
+        cond do
+          is_map(old_value) and is_map(new_value) ->
+            nested_delta = calculate_delta(old_value, new_value)
 
-              if nested_delta == %{} do
-                acc
+            if nested_delta == %{} do
+              acc
+            else
+              Map.put(acc, key, nested_delta)
+            end
+
+          is_map_key(current_context, key) and old_value != new_value ->
+            Map.put(acc, key, %{
+              action: :modified,
+              old_value: old_value,
+              value: new_value
+            })
+
+          is_nil(old_value) ->
+            delta =
+              if is_map(new_value) do
+                calculate_delta(%{}, new_value)
               else
-                Map.put(acc, key, nested_delta)
+                %{action: :added, value: new_value}
               end
 
-            old_value when old_value != new_value ->
-              Map.put(acc, key, %{
-                action: :modified,
-                old_value: old_value,
-                value: new_value
-              })
+            Map.put(acc, key, delta)
 
-            _ ->
-              acc
-          end
-        end)
+          true ->
+            acc
+        end
+      end)
 
-      # Detect removed keys
-      removed =
-        Enum.reduce(current_context, %{}, fn {key, _value}, acc ->
-          case Map.has_key?(new_context, key) do
-            true -> acc
-            false -> Map.put(acc, key, %{action: :removed})
-          end
-        end)
+    # Detect removed keys
+    current_keys = Map.keys(current_context)
 
-      # Combine results
-      Map.merge(added_or_modified, removed)
-    end
+    removed =
+      Enum.reduce(current_keys, %{}, fn key, acc ->
+        if Map.has_key?(new_context, key) do
+          acc
+        else
+          Map.put(acc, key, %{action: :removed, old_value: Map.get(current_context, key)})
+        end
+      end)
+
+    Map.merge(added_or_modified, removed)
   end
 
   @doc """
@@ -104,11 +115,11 @@ defmodule Chord.Delta do
 
   ## Example
       iex> delta1 = %{a: %{action: :added, value: 1}, b: %{action: :modified, old_value: 2, value: 3}}
-      iex> delta2 = %{b: %{action: :removed}, c: %{action: :added, value: 4}}
+      iex> delta2 = %{b: %{action: :removed, old_value: 3}, c: %{action: :added, value: 4}}
       iex> Chord.Delta.merge_deltas([delta1, delta2])
       %{
         a: %{action: :added, value: 1},
-        b: %{action: :removed},
+        b: %{action: :removed, old_value: 3},
         c: %{action: :added, value: 4}
       }
   """
@@ -118,10 +129,10 @@ defmodule Chord.Delta do
       Map.merge(acc, delta, fn _key, v1, v2 ->
         cond do
           v1[:action] == :removed or v2[:action] == :removed ->
-            %{action: :removed}
+            %{action: :removed, old_value: v2[:old_value]}
 
-          v1[:action] == :modified and v2[:action] == :modified ->
-            %{action: :modified, old_value: v1.old_value, value: v2.value}
+          v1[:action] == :modified or v2[:action] == :modified ->
+            %{action: :modified, old_value: v2.old_value, value: v2.value}
 
           is_map(v1) and is_map(v2) ->
             merge_deltas([v1, v2])
@@ -134,29 +145,28 @@ defmodule Chord.Delta do
   end
 
   @doc """
-  Formats a delta map for external communication or storage.
+  Formats a delta map for external use using the configured delta formatter.
 
-  Uses the configured delta formatter to transform the delta map into a desired format.
-  By default, it uses `Chord.Delta.Formatter.Default`.
+  This function delegates the formatting process to the delta formatter configured in your application.
+  By default, it uses the `Chord.Delta.Formatter.Default` module, but you can provide a custom formatter
+  to handle deltas according to your application's requirements.
+
+  The `metadata` parameter provides flexibility for passing additional information to the formatter.
+  While common keys like `:context_id` and `:version` are supported by the default formatter,
+  custom formatters can utilize any metadata relevant to their implementation.
 
   ## Parameters
-    - `delta` (map): The delta to format.
-    - `context_id` (any): The context associated with the delta.
+    - `delta` (map): The delta map representing changes to the context.
+    - `metadata` (map): A dynamic map containing additional information for the formatter. Common keys include:
+      - `:context_id` - The identifier of the context.
+      - `:version` - The version of the context being formatted.
 
   ## Returns
-    - (list): The formatted delta, as determined by the formatter module.
-
-  ## Example
-      iex> delta = %{a: %{action: :added, value: 1}, b: %{action: :removed}}
-      iex> Chord.Delta.format_delta(delta, "game:1")
-      [
-        %{key: :a, action: :added, value: 1, context: "game:1"},
-        %{key: :b, action: :removed, context: "game:1"}
-      ]
+    - A formatted map or any structure returned by the configured formatter.
   """
-  @spec format_delta(delta :: map(), context_id :: any()) :: list()
-  def format_delta(delta, context_id) do
+  @spec format_delta(delta :: map(), metadata :: any()) :: any()
+  def format_delta(delta, metadata) do
     formatter = Application.get_env(:chord, :delta_formatter, @default_formatter)
-    formatter.format(delta, context_id)
+    formatter.format(delta, metadata)
   end
 end

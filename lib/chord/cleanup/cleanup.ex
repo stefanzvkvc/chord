@@ -4,9 +4,9 @@ defmodule Chord.Cleanup do
   such as old contexts or deltas, ensuring efficient use of storage and memory.
 
   ## Key Features
-  - **Time-Based Cleanup**: Periodically remove stale contexts or deltas based on configurable time-to-live (TTL) values.
-  - **Threshold-Based Cleanup**: Retain only the latest N deltas per context, defined by the `:delta_threshold` configuration.
-  - **Periodic Cleanup**: A convenient API for batch cleanup of multiple contexts and deltas.
+  - **Time-based cleanup**: Periodically remove stale contexts or deltas based on configurable time-to-live (TTL) values.
+  - **Threshold-based cleanup**: Retain only the latest N deltas per context, defined by the `:delta_threshold` configuration.
+  - **Periodic cleanup**: A convenient API for batch cleanup of multiple contexts and deltas.
 
   ## Configuration
   - `:context_auto_delete` (default: false): Whether to enable automatic context deletion during cleanup.
@@ -24,6 +24,7 @@ defmodule Chord.Cleanup do
 
   @default_backend Chord.Backend.ETS
   @default_time_provider Chord.Utils.Time
+  @default_time_unit :second
   @default_context_auto_delete false
   @default_context_ttl nil
   @default_delta_ttl 24 * 60 * 60
@@ -47,7 +48,8 @@ defmodule Chord.Cleanup do
   """
   @spec periodic_cleanup(keyword()) :: :ok
   def periodic_cleanup(opts \\ []) do
-    current_time = time_provider().current_time(:second)
+    time_unit = time_unit()
+    current_time = time_provider().current_time(time_unit)
     Logger.info("Starting periodic cleanup at #{current_time} with options: #{inspect(opts)}")
 
     # Delete contexts (if auto-deletion is enabled)
@@ -59,7 +61,7 @@ defmodule Chord.Cleanup do
     # Delete deltas exceeding the threshold
     cleanup_deltas_by_threshold(opts)
 
-    Logger.info("Periodic cleanup completed at #{System.system_time(:second)}")
+    Logger.info("Periodic cleanup completed at #{System.system_time(time_unit)}")
 
     :ok
   end
@@ -69,7 +71,7 @@ defmodule Chord.Cleanup do
     context_ttl = context_ttl()
 
     if context_auto_delete && context_ttl do
-      Logger.info("Cleaning up contexts older than #{context_ttl} seconds")
+      Logger.info("Cleaning up contexts older than #{context_ttl}")
 
       {:ok, contexts} = backend().list_contexts(opts)
 
@@ -100,7 +102,7 @@ defmodule Chord.Cleanup do
     delta_ttl = delta_ttl()
 
     if delta_ttl do
-      Logger.info("Cleaning up deltas older than #{delta_ttl} seconds")
+      Logger.info("Cleaning up deltas older than #{delta_ttl}")
 
       {:ok, deltas} = backend().list_deltas(opts)
 
@@ -158,32 +160,30 @@ defmodule Chord.Cleanup do
     end
   end
 
-  @doc false
   defp backend() do
     Application.get_env(:chord, :backend, @default_backend)
   end
 
-  @doc false
   defp time_provider() do
     Application.get_env(:chord, :time_provider, @default_time_provider)
   end
 
-  @doc false
+  defp time_unit() do
+    Application.get_env(:chord, :time_unit, @default_time_unit)
+  end
+
   defp context_auto_delete() do
     Application.get_env(:chord, :context_auto_delete, @default_context_auto_delete)
   end
 
-  @doc false
   defp context_ttl() do
     Application.get_env(:chord, :context_ttl, @default_context_ttl)
   end
 
-  @doc false
   defp delta_ttl() do
     Application.get_env(:chord, :delta_ttl, @default_delta_ttl)
   end
 
-  @doc false
   defp delta_threshold() do
     Application.get_env(:chord, :delta_threshold, @default_delta_threshold)
   end

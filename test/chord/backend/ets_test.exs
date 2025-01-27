@@ -9,7 +9,7 @@ defmodule Chord.Backend.ETSTest do
     :ets.new(:chord_context_table, [:named_table, :ordered_set, :public])
     :ets.new(:chord_context_history_table, [:named_table, :ordered_set, :public])
 
-    current_time = 1_673_253_120
+    current_time = 1737888978
     context_id = "test-context"
     context = %{score: 0}
     delta = %{score: %{action: :added, value: 100}}
@@ -47,7 +47,7 @@ defmodule Chord.Backend.ETSTest do
       version: version,
       expected_context_result: expected_context_result
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       {:ok, result} = ETS.set_context(context_id, context, version)
       assert result == expected_context_result
     end
@@ -59,7 +59,7 @@ defmodule Chord.Backend.ETSTest do
       version: version,
       expected_context_result: expected_context_result
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       {:ok, result_1} = ETS.set_context(context_id, context, version)
       {:ok, result_2} = ETS.get_context(context_id)
       assert result_1 == expected_context_result
@@ -79,7 +79,7 @@ defmodule Chord.Backend.ETSTest do
       version: version,
       expected_context_result: expected_context_result
     } do
-      mock_time([unit: :second, time: current_time], 2)
+      mock_time([time: current_time], 2)
 
       {:ok, result} = ETS.set_context(context_id, context, version)
       :ok = ETS.delete_context(context_id)
@@ -97,7 +97,7 @@ defmodule Chord.Backend.ETSTest do
       delta: delta,
       expected_delta_result: expected_delta_result
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
 
       {:ok, result} = ETS.set_delta(context_id, delta, version)
       assert result == expected_delta_result
@@ -110,7 +110,7 @@ defmodule Chord.Backend.ETSTest do
       delta: delta,
       expected_delta_result: expected_delta_result
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       {:ok, result_1} = ETS.set_delta(context_id, delta, version)
       {:ok, [result_2]} = ETS.get_deltas(context_id, 0)
       assert result_1 == expected_delta_result
@@ -126,7 +126,7 @@ defmodule Chord.Backend.ETSTest do
       context_id: context_id,
       delta: delta
     } do
-      mock_time([unit: :second, time: current_time], 10)
+      mock_time([time: current_time], 10)
 
       Enum.each(1..10, fn version ->
         delta = put_in(delta, [:score, :value], version)
@@ -147,7 +147,7 @@ defmodule Chord.Backend.ETSTest do
     } do
       threshold = 5
 
-      mock_time([unit: :second, time: current_time], 10)
+      mock_time([time: current_time], 10)
 
       Enum.each(1..10, fn version ->
         delta = put_in(delta, [:score, :value], version)
@@ -166,7 +166,7 @@ defmodule Chord.Backend.ETSTest do
       current_time: current_time,
       context: context
     } do
-      mock_time([unit: :second, time: current_time], 3)
+      mock_time([time: current_time], 3)
 
       Enum.each(1..3, fn version ->
         context_id = "game:#{version}"
@@ -184,7 +184,7 @@ defmodule Chord.Backend.ETSTest do
       context_id: context_id,
       delta: delta
     } do
-      mock_time([unit: :second, time: current_time], 3)
+      mock_time([time: current_time], 3)
 
       Enum.each(1..3, fn version ->
         delta = put_in(delta, [:score, :value], version)

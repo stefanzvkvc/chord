@@ -7,7 +7,6 @@ defmodule Chord.Utils.Time.Behaviour do
   time in tests.
 
   ## Example
-
       defmodule MyCustomTimeProvider do
         @behaviour Chord.Utils.Time.Behaviour
 

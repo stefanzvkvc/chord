@@ -7,7 +7,7 @@ defmodule Chord.Backend.RedisTest do
   setup do
     Application.put_env(:chord, :redis_client, Chord.Support.Mocks.Redis)
     Application.put_env(:chord, :time_provider, Chord.Support.Mocks.Time)
-    current_time = 1_673_253_120
+    current_time = 1737888978
     context_id = "test-context"
     context = %{score: 0}
     delta = %{score: %{action: :added, value: 100}}
@@ -47,7 +47,7 @@ defmodule Chord.Backend.RedisTest do
       version: version,
       expected_context_response: expected_context_response
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_hset(context_id: context_id)
       {:ok, result} = Redis.set_context(context_id, context, version)
       assert result == expected_context_response
@@ -60,7 +60,7 @@ defmodule Chord.Backend.RedisTest do
       version: version,
       expected_context_response: expected_context_response
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_hset(context_id: context_id)
 
       mock_hgetall(
@@ -97,7 +97,7 @@ defmodule Chord.Backend.RedisTest do
       delta: delta,
       expected_delta_response: expected_delta_response
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
 
       mock_zadd(
         context_id: context_id,
@@ -118,7 +118,7 @@ defmodule Chord.Backend.RedisTest do
       version: version,
       client_version: client_version
     } do
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
 
       mock_zadd(
         context_id: context_id,

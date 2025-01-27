@@ -99,7 +99,9 @@ defmodule Chord.Support.MocksHelpers.Backend do
     inserted_at = opts[:inserted_at]
 
     Mox.expect(Backend, :list_contexts, times, fn actual_opts ->
-      if limit, do: ExUnit.Assertions.assert(actual_opts[:limit] == limit)
+      if limit do
+        ExUnit.Assertions.assert(actual_opts[:limit] == limit)
+      end
 
       if context_id && inserted_at do
         {:ok, [%{context_id: context_id, inserted_at: inserted_at}]}
@@ -128,7 +130,9 @@ defmodule Chord.Support.MocksHelpers.Backend do
     inserted_at = opts[:inserted_at]
 
     Mox.expect(Backend, :list_deltas, times, fn actual_opts ->
-      if limit, do: ExUnit.Assertions.assert(actual_opts[:limit] == limit)
+      if limit do
+        ExUnit.Assertions.assert(actual_opts[:limit] == limit)
+      end
 
       if context_id && inserted_at do
         {:ok, [%{context_id: context_id, inserted_at: inserted_at}]}

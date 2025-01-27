@@ -11,7 +11,7 @@ defmodule Chord.Cleanup.ServerTest do
     Application.put_env(:chord, :context_auto_delete, false)
     Application.put_env(:chord, :delta_ttl, :timer.hours(3))
 
-    {:ok, current_time: 1_673_253_120}
+    {:ok, current_time: 1737888978}
   end
 
   describe "Periodic Cleanup Execution" do
@@ -23,7 +23,7 @@ defmodule Chord.Cleanup.ServerTest do
       context_time = current_time - context_ttl - 1
       delta_threshold = current_time - delta_ttl
 
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_contexts(context_id: context_id, inserted_at: context_time)
       mock_delete_context(context_id: context_id)
       mock_list_deltas(context_id: context_id, inserted_at: delta_threshold - 1)
@@ -43,7 +43,7 @@ defmodule Chord.Cleanup.ServerTest do
   describe "Backend Configuration" do
     test "uses backend_opts for periodic cleanup", %{current_time: current_time} do
       unique_name = get_process_name()
-      mock_time(unit: :second, time: current_time)
+      mock_time(time: current_time)
       mock_list_contexts(limit: 10)
       mock_list_deltas(limit: 10)
       mock_list_contexts_with_delta_counts([])

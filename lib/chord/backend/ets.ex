@@ -5,8 +5,8 @@ defmodule Chord.Backend.ETS do
   key ordering for listing and cleanup operations.
 
   ## Tables
-  - `@context_table`: Stores context state with a composite key `{context_id, inserted_at}`.
-  - `@context_history_table`: Stores deltas with a composite key `{context_id, version}`.
+    - `@context_table`: Stores context state with a composite key `{context_id, inserted_at}`.
+    - `@context_history_table`: Stores deltas with a composite key `{context_id, version}`.
 
   ## Configuration
   This backend can be used out-of-the-box with the following settings:
@@ -14,6 +14,7 @@ defmodule Chord.Backend.ETS do
   """
   @behaviour Chord.Backend.Behaviour
   @default_time_provider Chord.Utils.Time
+  @default_time_unit :second
   @context_table :chord_context_table
   @context_history_table :chord_context_history_table
 
@@ -21,8 +22,7 @@ defmodule Chord.Backend.ETS do
   @impl true
   def set_context(context_id, context, version) do
     ensure_table_exists()
-
-    inserted_at = time_provider().current_time(:second)
+    inserted_at = time_provider().current_time(time_unit())
 
     # Delete all existing records with the same context_id
     match_spec = [{{{context_id, :_}, :_, :_}, [], [true]}]
@@ -65,7 +65,7 @@ defmodule Chord.Backend.ETS do
   def set_delta(context_id, delta, version) do
     ensure_table_exists()
 
-    inserted_at = time_provider().current_time(:second)
+    inserted_at = time_provider().current_time(time_unit())
     :ets.insert(@context_history_table, {{context_id, version}, delta, inserted_at})
     {:ok, %{context_id: context_id, delta: delta, version: version, inserted_at: inserted_at}}
   end
@@ -245,10 +245,21 @@ defmodule Chord.Backend.ETS do
     end
   end
 
-  defp maybe_reverse(list, :asc), do: list
-  defp maybe_reverse(list, :desc), do: Enum.reverse(list)
-  defp maybe_slice(list, offset, :infinity), do: Enum.drop(list, offset)
-  defp maybe_slice(list, offset, limit), do: Enum.slice(list, offset, limit)
+  defp maybe_reverse(list, :asc) do
+    list
+  end
+
+  defp maybe_reverse(list, :desc) do
+    Enum.reverse(list)
+  end
+
+  defp maybe_slice(list, offset, :infinity) do
+    Enum.drop(list, offset)
+  end
+
+  defp maybe_slice(list, offset, limit) do
+    Enum.slice(list, offset, limit)
+  end
 
   defp normalize_data(list, :contexts) do
     Enum.map(list, fn {context_id, inserted_at, context, version} ->
@@ -287,5 +298,9 @@ defmodule Chord.Backend.ETS do
 
   defp time_provider() do
     Application.get_env(:chord, :time_provider, @default_time_provider)
+  end
+
+  defp time_unit() do
+    Application.get_env(:chord, :time_unit, @default_time_unit)
   end
 end

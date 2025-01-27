@@ -166,5 +166,7 @@ defmodule Chord.Support.MocksHelpers.Redis do
     end)
   end
 
-  defp redis_key(prefix, context_id), do: "#{prefix}:#{context_id}"
+  defp redis_key(prefix, context_id) do
+    "#{prefix}:#{context_id}"
+  end
 end

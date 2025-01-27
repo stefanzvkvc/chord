@@ -307,7 +307,7 @@ defmodule Chord.Context.ManagerTest do
     end
 
     test "handles missing context in external storage", %{context_id: context_id} do
-      Application.put_env(:chord, :context_external_provider, fn context_id ->
+      Application.put_env(:chord, :context_external_provider, fn _context_id ->
         {:error, :not_found}
       end)
 
@@ -316,8 +316,7 @@ defmodule Chord.Context.ManagerTest do
     end
 
     test "handles missing context external provider callback gracefully", %{
-      context_id: context_id,
-      old_context: old_context
+      context_id: context_id
     } do
       Application.delete_env(:chord, :context_external_provider)
       expected_result = {:error, :no_context_external_provider}

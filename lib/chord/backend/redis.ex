@@ -22,6 +22,7 @@ defmodule Chord.Backend.Redis do
 
   @behaviour Chord.Backend.Behaviour
   @default_time_provider Chord.Utils.Time
+  @default_time_unit :second
   @context_prefix "chord:context"
   @delta_prefix "chord:delta"
 
@@ -29,7 +30,7 @@ defmodule Chord.Backend.Redis do
   @impl true
   def set_context(context_id, context, version) do
     key = redis_key(@context_prefix, context_id)
-    inserted_at = time_provider().current_time(:second)
+    inserted_at = time_provider().current_time(time_unit())
     payload = prepare_payload(:context, context, version, inserted_at)
 
     execute_redis(["HSET", key | serialize_payload(:context, payload)], fn _ ->
@@ -61,7 +62,7 @@ defmodule Chord.Backend.Redis do
   @impl true
   def set_delta(context_id, delta, version) do
     key = redis_key(@delta_prefix, context_id)
-    inserted_at = time_provider().current_time(:second)
+    inserted_at = time_provider().current_time(time_unit())
     payload = prepare_payload(:delta, delta, version, inserted_at)
 
     execute_redis(["ZADD", key, "#{version}", serialize_payload(:delta, payload)], fn _ ->
@@ -237,8 +238,13 @@ defmodule Chord.Backend.Redis do
     |> apply_offset_and_limit(offset, limit)
   end
 
-  defp maybe_reverse(list, :asc), do: list
-  defp maybe_reverse(list, :desc), do: Enum.reverse(list)
+  defp maybe_reverse(list, :asc) do
+    list
+  end
+
+  defp maybe_reverse(list, :desc) do
+    Enum.reverse(list)
+  end
 
   defp apply_offset_and_limit(list, offset, :infinity) do
     Enum.drop(list, offset)
@@ -248,7 +254,9 @@ defmodule Chord.Backend.Redis do
     Enum.slice(list, offset, limit)
   end
 
-  defp redis_key(prefix, context_id), do: "#{prefix}:#{context_id}"
+  defp redis_key(prefix, context_id) do
+    "#{prefix}:#{context_id}"
+  end
 
   defp execute_redis(command, callback) do
     command
@@ -262,7 +270,19 @@ defmodule Chord.Backend.Redis do
     end
   end
 
-  defp binary_to_term(binary), do: :erlang.binary_to_term(binary)
-  defp term_to_binary(term), do: :erlang.term_to_binary(term)
-  defp time_provider, do: Application.get_env(:chord, :time_provider, @default_time_provider)
+  defp binary_to_term(binary) do
+    :erlang.binary_to_term(binary)
+  end
+
+  defp term_to_binary(term) do
+    :erlang.term_to_binary(term)
+  end
+
+  defp time_provider do
+    Application.get_env(:chord, :time_provider, @default_time_provider)
+  end
+
+  defp time_unit() do
+    Application.get_env(:chord, :time_unit, @default_time_unit)
+  end
 end

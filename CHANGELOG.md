@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2025-01-27
+### New Features
+- Added time_unit configuration to allow users to define the time unit (:second or :millisecond) for generating timestamps.
+
+### Improvements
+- Delta calculation now handles nested structures more effectively. Example:
+  - Previous output:
+    ```elixir
+    %{a: %{value: %{b: %{c: %{d: "d"}}}, action: :added}}
+    ```
+  - New output:
+    ```elixir
+    %{a: %{b: %{c: %{d: %{value: "d", action: :added}}}}}
+    ```
+  This ensures a more logical representation of changes.
+- The default delta formatter was redesigned to produce an output format that is easier to process, serialize, and consume. It now includes:
+  - Simplified structures.
+  - Improved usability for downstream consumers.
+- Enhanced documentation across modules to improve usability and clarity.
+- Other changes:
+  - Various minor adjustments and refinements for consistency and maintainability.
+
+
 ## [0.1.4] - 2025-01-22
 ### Added
 - Enhanced `README.md` with detailed examples for using the Chord library.

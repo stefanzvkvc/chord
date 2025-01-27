@@ -21,7 +21,7 @@ When you need a solution for real-time state synchronization, partial updates, a
 
 ---
 
-## 🚀 Getting started
+## Getting started
 
 ### Install the library
 Add Chord to your Mix dependencies:
@@ -29,7 +29,7 @@ Add Chord to your Mix dependencies:
 ```elixir
 def deps do
   [
-    {:chord, "~> 0.1.4"}
+    {:chord, "~> 0.2.0"}
   ]
 end
 ```
@@ -45,16 +45,30 @@ Add your desired configuration in `config/config.exs`:
 
 ```elixir
 config :chord,
-  backend: Chord.Backend.ETS,                     # Choose your backend (Redis, ETS, etc.)
-  context_auto_delete: false,                     # Enable or disable auto-deletion of old contexts
-  context_ttl: 6 * 60 * 60,                       # Time-to-live for contexts
-  delta_ttl: 24 * 60 * 60,                        # Time-to-live for deltas
-  delta_threshold: 100,                           # Number of deltas to retain
-  delta_formatter: Chord.Delta.Formatter.Default, # Format for deltas
-  time_provider: Chord.Utils.Time,                # Time provider for consistent timestamps
-  export_callback: nil,                           # Optional: Define a callback for exporting contexts
-  context_external_provider: nil                  # Optional: Define a function for fetching external contexts
+  backend: Chord.Backend.ETS,                     # Choose the backend (ETS, Redis, etc.)
+  context_auto_delete: false,                     # Enables automatic deletion of old contexts
+  context_ttl: 6 * 60 * 60,                       # Context time-to-live (follows `time_unit` format)
+  delta_ttl: 24 * 60 * 60,                        # Delta time-to-live (follows `time_unit` format)
+  delta_threshold: 100,                           # Maximum number of deltas to retain
+  delta_formatter: Chord.Delta.Formatter.Default, # Default delta formatter; customizable
+  time_provider: Chord.Utils.Time,                # Default time provider; customizable
+  time_unit: :second,                             # Time unit (:second or :millisecond) for timestamps
+  export_callback: nil,                           # Callback for persisting contexts
+  context_external_provider: nil                  # Function for fetching external contexts
 ```
+
+Explanation:
+  - **context_auto_delete**: Optional but recommended for efficient memory management.
+    - If enabled, the following options must also be set:
+      - **context_ttl**: Defines the time-to-live for contexts.
+      - **delta_ttl**: Specifies the time-to-live for deltas.
+      - **delta_threshold**: Determines the maximum number of deltas to retain.
+  - **context_ttl** & **delta_ttl**: Specify lifetimes for contexts and deltas. The values should align with the unit set in time_unit.
+  - **delta_formatter**: A default delta formatter is provided, but you can implement a custom formatter to suit your needs.
+  - **time_provider**: Responsible for generating timestamps. You can replace the default with a custom time provider.
+  - **time_unit**: Specifies the time unit for timestamps. Options are :second or :millisecond.
+  - **export_callback**: Define this callback to persist contexts from memory to an external storage solution.
+  - **context_external_provider**: Use this to retrieve contexts from external sources when needed.
 
 ---
 
@@ -71,7 +85,7 @@ With this understanding of the term, let's look at some practical examples.
 Define the global context and track changes with deltas.
 
 ```elixir
-Chord.set_context("user:123", %{status: "online", metadata: %{theme: "light", language: "en-US"}})
+Chord.set_context("user:369", %{status: "online", metadata: %{theme: "light", language: "en-US"}})
 {:ok,
  %{
    context: %{
@@ -80,17 +94,20 @@ Chord.set_context("user:123", %{status: "online", metadata: %{theme: "light", la
        status: "online",
        metadata: %{language: "en-US", theme: "light"}
      },
-     inserted_at: 1737570501,
-     context_id: "user:123"
+     context_id: "user:369",
+     inserted_at: 1737901562
    },
    delta: %{
      version: 1,
+     context_id: "user:369",
      delta: %{
        status: %{value: "online", action: :added},
-       metadata: %{value: %{language: "en-US", theme: "light"}, action: :added}
+       metadata: %{
+         language: %{value: "en-US", action: :added},
+         theme: %{value: "light", action: :added}
+       }
      },
-     inserted_at: 1737570501,
-     context_id: "user:123"
+     inserted_at: 1737901562
    }
  }}
 ```
@@ -100,24 +117,24 @@ Updates a portion of the global context associated with a specific identifier.
 This function allows for partial modifications without affecting the entire context.
 
 ```elixir
-Chord.update_context("user:123", %{metadata: %{theme: "dark"}})
+Chord.update_context("user:369", %{metadata: %{theme: "dark"}})
 {:ok,
  %{
    context: %{
      version: 2,
      context: %{status: "online", metadata: %{language: "en-US", theme: "dark"}},
-     inserted_at: 1737570583,
-     context_id: "user:123"
+     context_id: "user:369",
+     inserted_at: 1737901601
    },
    delta: %{
      version: 2,
+     context_id: "user:369",
      delta: %{
        metadata: %{
          theme: %{value: "dark", action: :modified, old_value: "light"}
        }
      },
-     inserted_at: 1737570583,
-     context_id: "user:123"
+     inserted_at: 1737901601
    }
  }}
 ```
@@ -126,13 +143,13 @@ Chord.update_context("user:123", %{metadata: %{theme: "dark"}})
 Fetches the current state for a specified identifier.
 
 ```elixir
-Chord.get_context("user:123")
+Chord.get_context("user:369")
 {:ok,
  %{
    version: 2,
    context: %{status: "online", metadata: %{language: "en-US", theme: "dark"}},
-   inserted_at: 1737570583,
-   context_id: "user:123"
+   context_id: "user:369",
+   inserted_at: 1737901601
  }}
 ```
 
@@ -141,27 +158,27 @@ Synchronize the state for a given identifier.
 Depending on the version the client has, it will receive either the full context, only the changes (deltas), or a notification that there are no updates.
 
 ```elixir
-Chord.sync_context("user:123", nil)
+Chord.sync_context("user:369", nil)
 {:full_context,
  %{
    version: 2,
    context: %{status: "online", metadata: %{language: "en-US", theme: "dark"}},
-   inserted_at: 1737570583,
-   context_id: "user:123"
+   context_id: "user:369",
+   inserted_at: 1737901601
  }}
 
-Chord.sync_context("user:123", 1)
+Chord.sync_context("user:369", 1)
 {:delta,
  %{
    version: 2,
+   context_id: "user:369",
    delta: %{
      metadata: %{theme: %{value: "dark", action: :modified, old_value: "light"}}
    },
-   inserted_at: 1737570583,
-   context_id: "user:123"
+   inserted_at: 1737901601
  }}
 
-Chord.sync_context("user:123", 2)
+Chord.sync_context("user:369", 2)
 {:no_change, 2}
 ```
 
@@ -201,7 +218,7 @@ config :chord, :export_callback, &MyApp.ContextExporter.export_context/1
 Once the callback is configured, you can use function to export a specific context to external storage:
 
 ```elixir
-Chord.export_context("user:123")
+Chord.export_context("user:369")
 :ok
 ```
 
@@ -209,7 +226,7 @@ Chord.export_context("user:123")
 Removes the entire context and its associated deltas.
 
 ```elixir
-Chord.delete_context("user:123")
+Chord.delete_context("user:369")
 :ok
 ```
 
@@ -248,13 +265,13 @@ config :chord, :context_external_provider, &MyApp.ContextRestorer.restore_contex
 Once the callback is configured, you can use function to retrieve and restore a specific context:
 
 ```elixir
-Chord.restore_context("user:1234")
+Chord.restore_context("user:369")
 {:ok,
  %{
    version: 10,
    context: %{source: "external storage provider"},
    inserted_at: 1737464001,
-   context_id: "user:1234"
+   context_id: "user:369"
  }}
 ```
 
@@ -266,21 +283,22 @@ Chord provides cleanup functionality to remove stale contexts and deltas. To ena
 ```elixir
 config :chord,
   context_auto_delete: true, # Enable or disable auto-deletion of old contexts
-  context_ttl: 6 * 60 * 60,  # Time-to-live for contexts (in seconds)
-  delta_ttl: 24 * 60 * 60,   # Time-to-live for deltas (optional, in seconds)
+  context_ttl: 6 * 60 * 60,  # Time-to-live for contexts
+  delta_ttl: 24 * 60 * 60,   # Time-to-live for deltas
   delta_threshold: 100       # Number of delta versions to retain (optional)
 ```
 
 #### How it works
 - Context cleanup:
   - Set **context_auto_delete: true** to enable context cleanup.
-  - Configure **context_ttl** to define how long contexts should remain in memory before being deleted. The value must be in seconds, as timestamps are created with second-level precision.
+  - Configure **context_ttl** to define how long contexts should remain in memory before being deleted.
   - When a context is deleted, all associated deltas are automatically cleaned up as well.
 
 - Delta cleanup:
   - To clean deltas by age, set **delta_ttl** to specify the maximum time deltas should remain in memory.
   - To clean deltas by number, set **delta_threshold** to define the maximum number of deltas to retain.
 
+> **Note:** If the configured time unit is set to second, related configurations such as context_ttl and delta_ttl will also need to be specified in second to ensure consistency.
 
 #### Example usage
 Run the cleanup process manually with:
@@ -288,12 +306,6 @@ Run the cleanup process manually with:
 ```elixir
 Chord.cleanup(limit: 50)
 ```
-
-#### Future plans
-In the future, you’ll be able to configure the time unit (e.g., seconds, milliseconds), which will be used when generating timestamps.
-This configuration will apply to the function responsible for providing the current time, primarily used when setting inserted_at during data storage in memory.
-
-If the configured time unit is set to seconds, related configurations such as context_ttl and delta_ttl will also need to be specified in seconds to ensure consistency.
 
 ### Managing the cleanup server
 Start and manage the Cleanup Server for automated periodic cleanup:
@@ -310,6 +322,8 @@ Chord.stop_cleanup_server()
 ## Customization
 
 ### Backends
+A **backend** refers to the underlying data storage mechanism responsible for managing and persisting context and delta data. Backends allow Chord to be flexible and adaptable to different storage solutions, whether in-memory, on disk, or external services.
+
 Chord supports multiple backends out-of-the-box:
 
 - **ETS** (In-Memory): No additional setup is required.
@@ -351,28 +365,30 @@ defmodule MyApp.CustomFormatter do
   @behaviour Chord.Delta.Formatter.Behaviour
 
   @impl true
-  def format(delta, context_id) do
-    timestamp = DateTime.utc_now() |> DateTime.to_iso8601()
+  def format(delta, _context_id \\ nil) do
+    flatten_delta(delta, [])
+  end
 
-    Enum.map(delta, fn {key, change} ->
-      base = %{
-        timestamp: timestamp,
-        context_id: context_id,
-        field: key,
-        action: change.action
-      }
+  defp flatten_delta(delta, path) when is_map(delta) do
+    Enum.flat_map(delta, fn {key, value} ->
+      new_path = path ++ [key]
 
-      case change.action do
-        :added ->
-          Map.put(base, :new_value, change.value)
-
-        :modified ->
-          Map.merge(base, %{old_value: change.old_value, new_value: change.value})
-
-        :removed ->
-          base
+      if is_map(value) and Map.has_key?(value, :action) do
+        [format_change(new_path, value)]
+      else
+        flatten_delta(value, new_path)
       end
     end)
+  end
+
+  defp format_change(path, %{action: action} = change) do
+    base = %{key: path, action: action}
+
+    case action do
+      :added -> Map.put(base, :value, change.value)
+      :modified -> Map.merge(base, %{old_value: change.old_value, value: change.value})
+      :removed -> Map.put(base, :old_value, change.old_value)
+    end
   end
 end
 ```
@@ -389,38 +405,22 @@ config :chord, :delta_formatter, MyApp.CustomFormatter
 
 ```elixir
 delta = %{
-  a: %{action: :added, value: 1},
-  b: %{action: :modified, old_value: 2, value: 3},
-  c: %{action: :removed}
+  a: %{
+    f: %{value: "new", action: :added},
+    b: %{
+      c: %{
+        d: %{value: "2", action: :modified, old_value: "1"},
+        e: %{action: :removed, old_value: "3"}
+      }
+    }
+  }
 }
 
-context_id = "game:42"
-
-formatted_delta = MyApp.CustomFormatter.format(delta, context_id)
-
-IO.inspect(formatted_delta)
+MyApp.CustomFormatter.format(delta)
 [
-  %{
-    timestamp: "2025-01-22T15:00:00Z",
-    context_id: "game:42",
-    field: :a,
-    action: :added,
-    new_value: 1
-  },
-  %{
-    timestamp: "2025-01-22T15:00:00Z",
-    context_id: "game:42",
-    field: :b,
-    action: :modified,
-    old_value: 2,
-    new_value: 3
-  },
-  %{
-    timestamp: "2025-01-22T15:00:00Z",
-    context_id: "game:42",
-    field: :c,
-    action: :removed
-  }
+  %{value: "new", key: [:a, :f], action: :added},
+  %{value: "2", key: [:a, :b, :c, :d], action: :modified, old_value: "1"},
+  %{key: [:a, :b, :c, :e], action: :removed, old_value: "3"}
 ]
 ```
 
@@ -470,14 +470,14 @@ Chord has been tested to ensure solid performance in both Redis (single-node set
 ### 1. Stateless operations
 These scenarios simulate operations without maintaining a dedicated process per context. All updates, syncs and state modifications happen directly through the library’s API.
 
-- **Single context (50 participants):** Represents a single group chat or meeting with 50 participants frequently updating their status, typing indicators, or syncing state.
-- **Multiple contexts (100 contexts):** Simulates 100 independent group chats or meetings being updated simultaneously.
+- **Single context (50 participants)**: Represents a single group chat or meeting with 50 participants frequently updating their status, typing indicators, or syncing state.
+- **Multiple contexts (100 contexts)**: Simulates 100 independent group chats or meetings being updated simultaneously.
 
 ### 2. Stateful operations
 These scenarios introduce a process per context (e.g., a GenServer for each group chat). Each participant interacts with this stateful process and the process uses Chord’s API to manage context.
 
-- **Single context (50 participants):** A single group chat or meeting managed by a GenServer, handling frequent updates and syncs from 50 participants.
-- **Multiple contexts (100 contexts):** Simulates 100 group chats or meetings, each managed by its own GenServer, handling participant interactions.
+- **Single context (50 participants)**: A single group chat or meeting managed by a GenServer, handling frequent updates and syncs from 50 participants.
+- **Multiple contexts (100 contexts)**: Simulates 100 group chats or meetings, each managed by its own GenServer, handling participant interactions.
 
 ## Results
 
@@ -512,7 +512,7 @@ These scenarios introduce a process per context (e.g., a GenServer for each grou
 ### ETS:
 - **Optimal for single-node applications**: Outshines Redis in single-node scenarios, particularly in stateless operations where 50 participants concurrently update a single context, achieving 230.61 ops/sec with just 4.34 ms latency.
 - **GenServer overhead**: Stateful operations see reduced performance due to process-based synchronization, especially with many contexts (e.g., 100).
-- **Scalability limitations:**: While ETS is efficient for localized, single-node setups, it struggles with multi-context workloads, where its performance drops to 4.69 ops/sec for stateless and 5.66 ops/sec for stateful scenarios.
+- **Scalability limitations**: While ETS is efficient for localized, single-node setups, it struggles with multi-context workloads, where its performance drops to 4.69 ops/sec for stateless and 5.66 ops/sec for stateful scenarios.
 
 ## Choosing between stateless and stateful
 
@@ -536,11 +536,11 @@ These scenarios introduce a process per context (e.g., a GenServer for each grou
 | **Erlang Version**         | 27.1.2                   |
 | **JIT Enabled**            | True                     |
 
-**Benchmark Suite Configuration:**
-- **Warmup:** 2 seconds
-- **Execution Time:** 5 seconds
-- **Parallel:** 1
-- **Inputs:** Data
+**Benchmark Suite Configuration**:
+- **Warmup**: 2 seconds
+- **Execution Time**: 5 seconds
+- **Parallel**: 1
+- **Inputs**: Data
 
 ---
 

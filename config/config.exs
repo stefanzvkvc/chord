@@ -32,6 +32,9 @@ config :chord,
   # Allows for extensibility while using a built-in time provider by default
   time_provider: Chord.Utils.Time,
 
+  # Default time unit
+  time_unit: :second,
+
   # Default export callback
   # Keep it `nil`, giving users flexibility to define their export needs
   export_callback: nil,

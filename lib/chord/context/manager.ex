@@ -1,43 +1,19 @@
 defmodule Chord.Context.Manager do
   @moduledoc """
-  Orchestrates context synchronization, delta calculation, and backend interactions.
+  Handles context synchronization, delta calculation, and backend interactions.
 
-  The `Chord.Context.Manager` module is responsible for the core operations in Chord,
-  including context management, delta tracking, and backend interactions. It provides
-  a flexible and efficient system for managing state and deltas, designed to work seamlessly
-  with in-memory or external backends, offering users customizable workflows for their specific needs.
+  The `Chord.Context.Manager` module provides the core functionality for managing contexts, calculating deltas, and interacting with storage backends. Designed for both in-memory and external backends, it offers a flexible and efficient system for state and delta management.
 
   ## Features
 
-  - **Context Management:** Handles retrieval, updates, and deletions of contexts efficiently.
-  - **Delta Tracking:** Automatically calculates and stores deltas between context updates.
-  - **Synchronization:** Supports syncing contexts and deltas to clients based on their known versions.
-  - **Exporting Contexts:** Allows exporting active contexts to external storage using a configurable callback.
-  - **Flexible Backends:** Compatible with built-in ETS or Redis backends, as well as custom backends.
-  - **External Context Integration:** Supports fetching contexts from external storage when needed.
+  - **Context management**: Retrieve, update, and delete contexts.
+  - **Delta tracking**: Automatically calculate and store deltas between updates.
+  - **Synchronization**: Sync contexts and deltas with clients based on their known versions.
+  - **Exporting contexts**: Enable exporting to external storage via configurable callbacks.
+  - **Flexible backends**: Supports ETS, Redis, and custom backend implementations.
+  - **External integration**: Fetch contexts from external storage when required.
 
-  ## Use Cases
-
-  This module is designed for applications where efficient state and delta management
-  is critical, such as:
-
-  - Real-time collaborative applications (e.g., document editing, multiplayer games).
-  - Communication platforms (e.g., chat systems, call management).
-  - Systems requiring versioned state synchronization.
-
-  Developers can leverage `Chord.Context.Manager` to manage contexts with minimal boilerplate,
-  while retaining the flexibility to adapt the behavior through configuration and callbacks.
-
-  ## Configuration
-
-  The behavior of this module is driven by the following configuration options:
-
-      config :chord,
-        backend: Chord.Backend.ETS, # Backend to use for storing contexts and deltas.
-        delta_threshold: 100, # Threshold for determining when to send full contexts.
-        export_callback: &MyApp.ContextExporter.export/1, # Callback for exporting contexts.
-        context_external_provider: &MyApp.ExternalProvider.fetch_context/1 # Function for fetching external contexts.
-
+  This module serves as the backbone of Chord, enabling developers to implement real-time state and delta management with minimal boilerplate while retaining the flexibility to customize behavior through configuration.
   """
 
   require Logger
@@ -49,18 +25,21 @@ defmodule Chord.Context.Manager do
   # Public API
 
   @doc """
-  Updates the global context for a given identifier and calculates deltas.
+  Sets or updates the global context for a given identifier and calculates deltas.
+
+  This function can be used to either set a new global context or update an existing one by providing the full updated context. It calculates the deltas between the previous and the new context automatically.
 
   ## Parameters
-    - `context_id` (any): The ID of the context to update.
-    - `new_context` (map): The full updated context to set.
+    - `context_id` (any): The unique identifier of the context to set or update.
+    - `new_context` (map): The complete updated context to be stored.
 
   ## Returns
     - `{:ok, %{context: map(), delta: map()}}` on success.
     - `{:error, term()}` on failure.
   """
+
   @spec set_context(context_id :: any(), new_context :: map()) :: {:ok, map()} | {:error, term()}
-  def set_context(context_id, new_context) do
+  def set_context(context_id, new_context) when is_map(new_context) do
     Logger.debug("Setting context for #{inspect(context_id)}")
 
     %{context: old_context, version: old_version} = get_or_initialize_context(context_id)
@@ -90,7 +69,7 @@ defmodule Chord.Context.Manager do
 
   ## Returns
     - `{:ok, map()}` if context exists.
-    - `{:error, term()}` if no context is available.
+    - `{:error, term()}` on failure.
   """
   @spec get_context(context_id :: any()) :: {:ok, map()} | {:error, term()}
   def get_context(context_id) do
@@ -113,18 +92,18 @@ defmodule Chord.Context.Manager do
   @doc """
   Partially updates the context for a given identifier and calculates deltas.
 
-  Only the provided fields in `changes` are updated in the existing context.
+  The provided fields in `changes` are applied to the existing context. If a field in `changes` does not exist in the current context, it will be added to the context.
 
   ## Parameters
     - `context_id` (any): The ID of the context to update.
-    - `changes` (map): A map of fields to be updated.
+    - `changes` (map): A map of fields to be updated. If a field is not present in the context, it will be added.
 
   ## Returns
     - `{:ok, %{context: map(), delta: map()}}` on success.
     - `{:error, term()}` on failure.
   """
   @spec update_context(context_id :: any(), changes :: map()) :: {:ok, map()} | {:error, term()}
-  def update_context(context_id, changes) do
+  def update_context(context_id, changes) when is_map(changes) do
     Logger.debug("Updating context for #{inspect(context_id)} with changes: #{inspect(changes)}")
 
     case backend().get_context(context_id) do
@@ -164,9 +143,9 @@ defmodule Chord.Context.Manager do
 
   ## Returns
     - `{:ok, map()}` on success.
-    - `{:error, :not_found}` if the context is missing in external storage.
+    - `{:error, term()}` on failure.
   """
-  @spec restore_context(context_id :: any()) :: {:ok, map()} | {:error, :not_found}
+  @spec restore_context(context_id :: any()) :: {:ok, map()} | {:error, term()}
   def restore_context(context_id) do
     Logger.debug("Restoring context for #{inspect(context_id)} from external provider")
 
@@ -221,9 +200,9 @@ defmodule Chord.Context.Manager do
 
   ## Returns
     - `:ok` on success.
-    - `{:error, :not_found}` if the context does not exist.
+    - `{:error, term()}` on failure.
   """
-  @spec export_context(context_id :: any()) :: :ok | {:error, :not_found}
+  @spec export_context(context_id :: any()) :: :ok | {:error, term()}
   def export_context(context_id) do
     Logger.debug("Exporting context for #{inspect(context_id)}")
 
@@ -383,12 +362,19 @@ defmodule Chord.Context.Manager do
     """)
   end
 
-  # Configuration
+  defp backend() do
+    Application.get_env(:chord, :backend, @default_backend)
+  end
 
-  defp backend(), do: Application.get_env(:chord, :backend, @default_backend)
-  defp export_callback(), do: Application.get_env(:chord, :export_callback)
-  defp context_external_provider(), do: Application.get_env(:chord, :context_external_provider)
+  defp export_callback() do
+    Application.get_env(:chord, :export_callback)
+  end
 
-  defp delta_threshold(),
-    do: Application.get_env(:chord, :delta_threshold, @default_delta_threshold)
+  defp context_external_provider() do
+    Application.get_env(:chord, :context_external_provider)
+  end
+
+  defp delta_threshold() do
+    Application.get_env(:chord, :delta_threshold, @default_delta_threshold)
+  end
 end
