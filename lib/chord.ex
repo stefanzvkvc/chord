@@ -32,6 +32,7 @@ defmodule Chord do
     time_unit: :second,                                             # Unit for timestamps (:second or :millisecond)
     export_callback: &MyApp.ContextExporter.export/1,               # Callback for exporting contexts (optional)
     context_external_provider: &MyApp.ExternalState.fetch_context/1 # Restore contexts from external storage (optional)
+  ```
 
   ## Common Options
 
