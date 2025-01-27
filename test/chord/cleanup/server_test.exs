@@ -11,7 +11,7 @@ defmodule Chord.Cleanup.ServerTest do
     Application.put_env(:chord, :context_auto_delete, false)
     Application.put_env(:chord, :delta_ttl, :timer.hours(3))
 
-    {:ok, current_time: 1737888978}
+    {:ok, current_time: 1_737_888_978}
   end
 
   describe "Periodic Cleanup Execution" do

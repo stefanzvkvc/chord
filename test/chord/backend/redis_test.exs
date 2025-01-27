@@ -7,7 +7,7 @@ defmodule Chord.Backend.RedisTest do
   setup do
     Application.put_env(:chord, :redis_client, Chord.Support.Mocks.Redis)
     Application.put_env(:chord, :time_provider, Chord.Support.Mocks.Time)
-    current_time = 1737888978
+    current_time = 1_737_888_978
     context_id = "test-context"
     context = %{score: 0}
     delta = %{score: %{action: :added, value: 100}}

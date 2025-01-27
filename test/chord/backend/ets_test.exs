@@ -9,7 +9,7 @@ defmodule Chord.Backend.ETSTest do
     :ets.new(:chord_context_table, [:named_table, :ordered_set, :public])
     :ets.new(:chord_context_history_table, [:named_table, :ordered_set, :public])
 
-    current_time = 1737888978
+    current_time = 1_737_888_978
     context_id = "test-context"
     context = %{score: 0}
     delta = %{score: %{action: :added, value: 100}}

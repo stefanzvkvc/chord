@@ -12,7 +12,7 @@ defmodule Chord.CleanupTest do
     Application.put_env(:chord, :delta_ttl, :timer.hours(3))
     Application.put_env(:chord, :delta_threshold, 100)
 
-    {:ok, current_time: 1737888978}
+    {:ok, current_time: 1_737_888_978}
   end
 
   describe "Context cleanup" do
